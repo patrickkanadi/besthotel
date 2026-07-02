@@ -124,10 +124,20 @@ window.attemptLogin = async function() {
         const hashedPin = await hashString(rawPin);
         let staff = await new Promise(res => db.transaction(["staff"], "readonly").objectStore("staff").get(hashedPin).onsuccess = e => res(e.target.result));
         
+        // 🚀 FAST SYNC LOGIC: Only pull the Staff PINs to get you in instantly
         if (!staff && navigator.onLine) {
-            if(loginBtn) loginBtn.innerText = "Menarik Data Baru...";
-            await window.syncMasterData(true); 
-            staff = await new Promise(res => db.transaction(["staff"], "readonly").objectStore("staff").get(hashedPin).onsuccess = e => res(e.target.result));
+            if(loginBtn) loginBtn.innerText = "Memverifikasi PIN (Cepat)...";
+            const response = await fetch(`${API_URL}?action=syncStaff&t=${Date.now()}`, { method: 'GET' });
+            if (response.ok) {
+                const result = await response.json();
+                if (result.status === "Success" && result.data && result.data.staff) {
+                    let txFast = db.transaction(["staff"], "readwrite");
+                    txFast.objectStore("staff").clear();
+                    result.data.staff.forEach(s => txFast.objectStore("staff").add(s));
+                    await new Promise(r => txFast.oncomplete = r);
+                    staff = result.data.staff.find(s => s.pin === hashedPin);
+                }
+            }
         }
 
         if (staff) {
@@ -145,13 +155,19 @@ window.attemptLogin = async function() {
                 
                 window.switchWorkspace('new');
                 
+                // Load menu UI from whatever is currently stored locally
                 db.transaction(["menu"], "readonly").objectStore("menu").getAll().onsuccess = (e) => {
                     globalMenuData = e.target.result || []; loadMenuUI();
                 };
                 window.lockMenu(); 
+                
+                // Trigger the heavy menu download silently in the background
+                if (navigator.onLine) {
+                    setTimeout(() => { window.syncMasterData(); }, 1000);
+                }
             };
         } else { alert("PIN Kasir Salah atau Belum Terdaftar!"); }
-    } catch (err) { alert("Terjadi kesalahan sistem login."); } finally { 
+    } catch (err) { alert("Terjadi kesalahan sistem login."); console.error(err); } finally { 
         pinInput.value = ""; if(loginBtn) loginBtn.innerText = "Masuk / Buka Shift";
     }
 };
