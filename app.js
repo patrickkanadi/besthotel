@@ -281,25 +281,77 @@ window.selectMember = function(phone) {
 };
 
 // 5. MENU & NUMPAD & TRANSAKSI (CART)
+let currentLocation = ""; // Add this to your globals at the top
+
+// Replace the existing loadMenuUI and renderProductGrid with this:
 function loadMenuUI() {
-    const categories = [...new Set(globalMenuData.map(i => i.category))]; currentCategory = categories[0];
-    const catContainer = document.getElementById("category-container"); if(!catContainer) return;
-    catContainer.innerHTML = "";
-    categories.forEach(cat => {
-        const btn = document.createElement("button"); btn.className = `cat-btn ${cat === currentCategory ? "active" : ""}`; btn.innerText = cat;
-        btn.onclick = () => { currentCategory = cat; document.querySelectorAll(".cat-btn").forEach(b => b.classList.remove("active")); btn.classList.add("active"); renderProductGrid(); };
-        catContainer.appendChild(btn);
-    });
+    // 1. Setup Location (Layer 1)
+    const locations = [...new Set(globalMenuData.map(i => i.location))]; 
+    if (!currentLocation || !locations.includes(currentLocation)) currentLocation = locations[0];
+
+    const locContainer = document.getElementById("location-container"); 
+    if(locContainer) {
+        locContainer.innerHTML = "";
+        locations.forEach(loc => {
+            const btn = document.createElement("button"); 
+            btn.className = `cat-btn ${loc === currentLocation ? "active" : ""}`; 
+            // Give location tabs a different visual style (optional)
+            if(loc === currentLocation) {
+                btn.style.background = "#fff";
+                btn.style.color = "#2c3e50";
+            } else {
+                btn.style.background = "transparent";
+                btn.style.color = "#bdc3c7";
+            }
+            btn.innerText = loc;
+            btn.onclick = () => { 
+                currentLocation = loc; 
+                // Reset category to the first one available in this new location
+                const availableCats = [...new Set(globalMenuData.filter(i => i.location === currentLocation).map(i => i.category))];
+                currentCategory = availableCats[0];
+                loadMenuUI(); // Re-render both layers
+            };
+            locContainer.appendChild(btn);
+        });
+    }
+
+    // 2. Setup Category (Layer 2) - Filtered by Location
+    const filteredByLoc = globalMenuData.filter(i => i.location === currentLocation);
+    const categories = [...new Set(filteredByLoc.map(i => i.category))]; 
+    if (!currentCategory || !categories.includes(currentCategory)) currentCategory = categories[0];
+
+    const catContainer = document.getElementById("category-container"); 
+    if(catContainer) {
+        catContainer.innerHTML = "";
+        categories.forEach(cat => {
+            const btn = document.createElement("button"); 
+            btn.className = `cat-btn ${cat === currentCategory ? "active" : ""}`; 
+            btn.innerText = cat;
+            btn.onclick = () => { 
+                currentCategory = cat; 
+                document.querySelectorAll("#category-container .cat-btn").forEach(b => b.classList.remove("active")); 
+                btn.classList.add("active"); 
+                renderProductGrid(); 
+            };
+            catContainer.appendChild(btn);
+        });
+    }
     renderProductGrid();
 }
 
 function renderProductGrid() {
     const grid = document.getElementById("product-grid"); if(!grid) return;
     grid.innerHTML = "";
-    globalMenuData.filter(i => i.category === currentCategory).forEach(item => {
+    // Filter by BOTH Location and Category
+    globalMenuData.filter(i => i.location === currentLocation && i.category === currentCategory).forEach(item => {
         const card = document.createElement("div"); card.className = "product-card";
         card.innerHTML = `<div><h4>${item.name}</h4></div><div class="price-badge">Rp ${item.price.toLocaleString('id-ID')}</div>`;
-        card.onclick = () => { if(!isMenuLocked) { if(item.inputMode === "DECIMAL") window.openNumpad(item); else window.addToCart(item, 1); } };
+        card.onclick = () => { 
+            if(!isMenuLocked) { 
+                if(item.inputMode === "DECIMAL") window.openNumpad(item); 
+                else window.addToCart(item, 1); 
+            } 
+        };
         grid.appendChild(card);
     });
 }
@@ -501,7 +553,11 @@ window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot");
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; }
     try {
-        const response = await fetch(API_URL, { method: 'GET', mode: 'cors' }); const result = await response.json();
+            // The bulletproof way to fetch from GAS
+        const response = await fetch(`${API_URL}?t=${Date.now()}`, { method: 'GET' });
+        if (!response.ok) throw new Error("Network response was not ok");
+        const result = await response.json();
+        
         if (result.status === "Success") {
             window.masterDrawerBalance = result.masterDrawerBalance || 0;
             let p1 = new Promise((resolve) => {
