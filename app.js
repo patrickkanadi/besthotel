@@ -124,7 +124,7 @@ window.attemptLogin = async function() {
         const hashedPin = await hashString(rawPin);
         let staff = await new Promise(res => db.transaction(["staff"], "readonly").objectStore("staff").get(hashedPin).onsuccess = e => res(e.target.result));
         
-        // 🚀 FAST SYNC LOGIC: Only pull the Staff PINs to get you in instantly
+// 🚀 FAST SYNC LOGIC: Only pull the Staff PINs to get you in instantly
         if (!staff && navigator.onLine) {
             if(loginBtn) loginBtn.innerText = "Memverifikasi PIN (Cepat)...";
             const response = await fetch(`${API_URL}?action=syncStaff&t=${Date.now()}`, { method: 'GET' });
@@ -133,7 +133,10 @@ window.attemptLogin = async function() {
                 if (result.status === "Success" && result.data && result.data.staff) {
                     let txFast = db.transaction(["staff"], "readwrite");
                     txFast.objectStore("staff").clear();
-                    result.data.staff.forEach(s => txFast.objectStore("staff").add(s));
+                    
+                    // CHANGED TO .put() TO PREVENT CRASHES FROM DUPLICATE PINS
+                    result.data.staff.forEach(s => txFast.objectStore("staff").put(s)); 
+                    
                     await new Promise(r => txFast.oncomplete = r);
                     staff = result.data.staff.find(s => s.pin === hashedPin);
                 }
@@ -582,15 +585,31 @@ window.syncMasterData = async function(forceAwait = false) {
 
             let p1 = new Promise((resolve) => {
                 let txFast = db.transaction(["staff", "menu"], "readwrite");
-                txFast.objectStore("staff").clear(); result.data.staff.forEach(s => txFast.objectStore("staff").add(s));
-                txFast.objectStore("menu").clear(); result.data.menu.forEach(m => txFast.objectStore("menu").add(m));
+                txFast.objectStore("staff").clear(); 
+                
+                // CHANGED TO .put() TO PREVENT CRASHES
+                result.data.staff.forEach(s => txFast.objectStore("staff").put(s));
+                
+                txFast.objectStore("menu").clear(); 
+                
+                // CHANGED TO .put() TO PREVENT CRASHES FROM DUPLICATE ITEM IDs
+                result.data.menu.forEach(m => txFast.objectStore("menu").put(m));
+                
                 txFast.oncomplete = () => {
                     globalMenuData = result.data.menu; 
                     if (!document.getElementById("pos-screen").classList.contains("hidden")) { loadMenuUI(); }
-                    if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71"; resolve();
+                    if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71"; 
+                    resolve();
+                };
+                
+                // ADDED ERROR CATCHER SO IT DOESN'T FAIL SILENTLY
+                txFast.onerror = (e) => {
+                    console.error("Database Save Error:", e.target.error);
+                    if(nTxt) nTxt.innerText = "Error Data Ganda"; if(nDot) nDot.style.backgroundColor = "#e74c3c";
+                    resolve();
                 };
             });
-            if(forceAwait) await p1; 
+            if(forceAwait) await p1;
         }
     } catch (e) { if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; }
 };
