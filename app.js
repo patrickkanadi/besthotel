@@ -1,6 +1,6 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbykTybIX-9YVGytTKeCBbDdpU9ihP3lbYFaAEBJQA0iE7uaPpI7Te1U568pZdTian_-mw/exec"; // REPLACE THIS
+const API_URL = "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
-const DB_VERSION = 2; 
+const DB_VERSION = 3; 
 let db;
 
 let antreans = [
@@ -13,9 +13,10 @@ let currentAntreanIndex = 0;
 let currentCashier = ""; let currentPin = ""; let currentShiftId = ""; let currentLoginTime = "";
 let globalMenuData = []; let currentLocation = ""; let currentCategory = ""; let activeLaundryTickets = []; let currentCart = []; 
 let activeNumpadItem = null; let numpadValue = "0"; let activeSettlementTicket = null;
-window.masterDrawerBalance = 0; let isLoggingOut = false; let currentVoidTarget = { type: null, id: null };
-let isMenuLocked = true; let isSyncing = false;
-window.enableDrawerTracking = true;
+
+window.masterDrawerBalanceLaundry = 0;
+window.masterDrawerBalanceHotel = 0;
+let isLoggingOut = false; let isMenuLocked = true; let isSyncing = false;
 
 window.globalRoomList = [];
 window.globalRecentOrders = [];
@@ -40,7 +41,6 @@ function initDB() {
             if (!db.objectStoreNames.contains("shift_reports")) db.createObjectStore("shift_reports", { keyPath: "shiftId" }); 
             if (!db.objectStoreNames.contains("expenses")) db.createObjectStore("expenses", { keyPath: "expenseId" });
             if (!db.objectStoreNames.contains("expense_categories")) db.createObjectStore("expense_categories", { keyPath: "name" });
-            if (!db.objectStoreNames.contains("void_requests")) db.createObjectStore("void_requests", { keyPath: "id" });
             if (!db.objectStoreNames.contains("local_shift_history")) db.createObjectStore("local_shift_history", { keyPath: "shiftId" });
         };
         request.onsuccess = (e) => { db = e.target.result; resolve(db); };
@@ -124,19 +124,15 @@ window.attemptLogin = async function() {
         const hashedPin = await hashString(rawPin);
         let staff = await new Promise(res => db.transaction(["staff"], "readonly").objectStore("staff").get(hashedPin).onsuccess = e => res(e.target.result));
         
-// 🚀 FAST SYNC LOGIC: Only pull the Staff PINs to get you in instantly
         if (!staff && navigator.onLine) {
-            if(loginBtn) loginBtn.innerText = "Memverifikasi PIN (Cepat)...";
+            if(loginBtn) loginBtn.innerText = "Memverifikasi (Cepat)...";
             const response = await fetch(`${API_URL}?action=syncStaff&t=${Date.now()}`, { method: 'GET' });
             if (response.ok) {
                 const result = await response.json();
                 if (result.status === "Success" && result.data && result.data.staff) {
                     let txFast = db.transaction(["staff"], "readwrite");
                     txFast.objectStore("staff").clear();
-                    
-                    // CHANGED TO .put() TO PREVENT CRASHES FROM DUPLICATE PINS
                     result.data.staff.forEach(s => txFast.objectStore("staff").put(s)); 
-                    
                     await new Promise(r => txFast.oncomplete = r);
                     staff = result.data.staff.find(s => s.pin === hashedPin);
                 }
@@ -158,13 +154,11 @@ window.attemptLogin = async function() {
                 
                 window.switchWorkspace('new');
                 
-                // Load menu UI from whatever is currently stored locally
                 db.transaction(["menu"], "readonly").objectStore("menu").getAll().onsuccess = (e) => {
                     globalMenuData = e.target.result || []; loadMenuUI();
                 };
                 window.lockMenu(); 
-                
-                // Trigger the heavy menu download silently in the background
+
                 if (navigator.onLine) {
                     setTimeout(() => { window.syncMasterData(); }, 1000);
                 }
@@ -185,12 +179,11 @@ window.switchWorkspace = function(type) {
     } else {
         document.getElementById("tab-active-tickets").classList.add("active");
         document.getElementById("active-tickets-workspace").classList.remove("hidden");
-        window.renderActiveTickets(); 
     }
 };
 window.lockScreen = function() { window.location.reload(); };
 
-// 4. ANTREAN, PELANGGAN, KAMAR
+// 4. ANTREAN, KAMAR
 window.switchAntrean = function(index) {
     if (currentAntreanIndex === index) return;
     antreans[currentAntreanIndex].cart = [...currentCart];
@@ -218,7 +211,7 @@ window.switchAntrean = function(index) {
         if (acb) acb.classList.add("hidden");
         if (gl) { gl.style.opacity = "1"; gl.style.pointerEvents = "auto"; }
     } else {
-        let roomDisp = antreans[currentAntreanIndex].room || "Tanpa Kamar";
+        let roomDisp = antreans[currentAntreanIndex].room || "Tamu";
         let acn = document.getElementById("active-room-display"); if (acn) acn.innerText = roomDisp;
         if (cis) cis.classList.add("hidden");
         if (acb) acb.classList.remove("hidden");
@@ -229,7 +222,6 @@ window.switchAntrean = function(index) {
 
 window.lockMenu = function() {
     isMenuLocked = true; 
-    let pf = document.getElementById("pay-free"); if (pf) { if(pf.tagName === 'INPUT') pf.value = 0; else pf.innerText = 0; }
     let cis = document.getElementById("customer-input-section"); if(cis) cis.classList.remove("hidden");
     let acb = document.getElementById("active-customer-banner"); if(acb) acb.classList.add("hidden");
     let gl = document.getElementById("glass-overlay"); if(gl) { gl.style.opacity = "1"; gl.style.pointerEvents = "auto"; }
@@ -255,7 +247,7 @@ function proceedToUnlock(room) {
 }
 
 window.unlockMenu = function(isGuest) {
-    let room = "Tanpa Kamar";
+    let room = "Tamu";
     let ri = document.getElementById("room-input");
     
     if (isGuest) { 
@@ -273,17 +265,13 @@ window.handleAutocomplete = function(e) {
     const resBox = document.getElementById("autocomplete-results");
     if (!resBox) return;
 
-    if (val.length === 0) {
-        resBox.classList.add("hidden"); resBox.style.display = "none";
-        return;
-    }
-
-    let matches = window.globalRoomList.filter(r => r.toLowerCase().includes(val));
+    let matches = window.globalRoomList || [];
+    if (val.length > 0) matches = matches.filter(r => r.toLowerCase().includes(val));
     
     if (matches.length > 0) {
         resBox.innerHTML = matches.map(r => `
             <div class="autocomplete-item" onmousedown="window.selectRoom('${r}')" style="padding: 12px 15px; border-bottom: 1px solid #eef2f3; cursor: pointer; text-align: left; background: #fff; font-size: 15px; z-index: 10000; position:relative;">
-                <div style="font-weight: bold; color: #2980b9;">🚪 Kamar ${r}</div>
+                <div style="font-weight: bold; color: #2980b9;">${r}</div>
             </div>`).join("");
         resBox.classList.remove("hidden"); resBox.style.display = "block";
     } else { 
@@ -407,116 +395,100 @@ window.renderCart = function() {
     });
     let totalContainer = document.getElementById("cart-grand-total");
     if (totalContainer) totalContainer.innerText = `Rp ${total.toLocaleString('id-ID')}`;
-    window.cartSubtotal = total; window.cartGrandTotal = total;
+    window.cartSubtotal = total; 
 };
 
+// SPLIT PAYMENT REVIEW
 window.openReview = function() {
     if (currentCart.length === 0) return alert("Keranjang masih kosong!");
-    let inputs = ["pay-cash", "pay-qris", "pay-transfer"];
-    inputs.forEach(id => { let el = document.getElementById(id); if(el && el.tagName === 'INPUT') el.value = 0; });
-    let pf = document.getElementById("pay-free"); if(pf) { if(pf.tagName === 'INPUT') pf.value = 0; else pf.innerText = 0; }
+    let inputs = ["pay-qris", "pay-transfer", "pay-free"];
+    inputs.forEach(id => { let el = document.getElementById(id); if(el) el.value = 0; });
     
-    window.cartSubtotal = currentCart.reduce((sum, item) => sum + (item.qty * item.price), 0);
-    window.cartGrandTotal = window.cartSubtotal;
+    window.cartLaundryTotal = 0; window.cartHotelTotal = 0;
+    currentCart.forEach(item => {
+        let lineTotal = item.qty * item.price;
+        if (item.location && item.location.toLowerCase().includes('laundry')) window.cartLaundryTotal += lineTotal;
+        else window.cartHotelTotal += lineTotal;
+    });
+
+    window.cartSubtotal = window.cartLaundryTotal + window.cartHotelTotal;
     
-    let rst = document.getElementById("review-subtotal"); if(rst) rst.innerText = `Rp ${window.cartSubtotal.toLocaleString('id-ID')}`;
-    let rgt = document.getElementById("review-grandtotal"); if(rgt) rgt.innerText = `Rp ${window.cartGrandTotal.toLocaleString('id-ID')}`;
-    window.applyPromo();
+    let rstL = document.getElementById("review-subtotal-laundry"); if(rstL) rstL.innerText = `Rp ${window.cartLaundryTotal.toLocaleString('id-ID')}`;
+    let rstH = document.getElementById("review-subtotal-hotel"); if(rstH) rstH.innerText = `Rp ${window.cartHotelTotal.toLocaleString('id-ID')}`;
+
+    window.calculateRemaining();
     let mod = document.getElementById("review-modal"); if(mod) mod.classList.remove("hidden");
 };
 window.closeReview = function() { let reviewModal = document.getElementById("review-modal"); if (reviewModal) { reviewModal.classList.add("hidden"); } };
 
 window.calculateRemaining = function() {
-    let pc = document.getElementById("pay-cash"); let c = pc ? Number(pc.value) : 0;
-    let elQ = document.getElementById("pay-qris"); let q = elQ ? Number(elQ.value) : 0;
-    let elT = document.getElementById("pay-transfer"); let t = elT ? Number(elT.value) : 0;
-    let pf = document.getElementById("pay-free"); let f = pf ? Number(pf.value) : 0;
-    
+    let f = Number(document.getElementById("pay-free").value) || 0;
+    let q = Number(document.getElementById("pay-qris").value) || 0;
+    let t = Number(document.getElementById("pay-transfer").value) || 0;
+
+    // Strict limitations
+    if (q > window.cartLaundryTotal) { q = window.cartLaundryTotal; document.getElementById("pay-qris").value = q; }
+    if (t > window.cartHotelTotal) { t = window.cartHotelTotal; document.getElementById("pay-transfer").value = t; }
+
+    let remLaundry = window.cartLaundryTotal - q;
+    let remHotel = window.cartHotelTotal - t;
+
+    let discountLeft = f;
+    if (remHotel >= discountLeft) {
+        remHotel -= discountLeft; discountLeft = 0;
+    } else {
+        discountLeft -= remHotel; remHotel = 0;
+        remLaundry = Math.max(0, remLaundry - discountLeft);
+    }
+
+    window.cashLaundryAmount = remLaundry;
+    window.cashHotelAmount = remHotel;
+
+    let requiredCash = remLaundry + remHotel;
+    document.getElementById("pay-cash").value = requiredCash;
+
     window.cartGrandTotal = Math.max(0, window.cartSubtotal - f);
     let rgt = document.getElementById("review-grandtotal");
     if(rgt) rgt.innerText = `Rp ${window.cartGrandTotal.toLocaleString('id-ID')}`;
-
-    const totalAccounted = c + q + t; 
-    const remaining = Math.max(0, window.cartGrandTotal - totalAccounted);
-    let rr = document.getElementById("review-remaining");
-    if(rr) rr.innerText = `Rp ${remaining.toLocaleString('id-ID')}`;
 };
-window.applyPromo = window.calculateRemaining;
 
 window.finalizeOrder = async function(shouldPrint) {
-    let pc = document.getElementById("pay-cash"); let cash = pc ? Number(pc.value) : 0;
-    let elQ = document.getElementById("pay-qris"); let qris = elQ ? Number(elQ.value) : 0;
-    let elT = document.getElementById("pay-transfer"); let transfer = elT ? Number(elT.value) : 0;
-    let pf = document.getElementById("pay-free"); let free = pf ? Number(pf.value) : 0;
-    
-    if ((window.cartGrandTotal - (cash + qris + transfer)) > 0) return alert("⚠️ Pembayaran Belum Cukup!");
+    window.calculateRemaining(); // Final safety check
 
-    let roomNumber = antreans[currentAntreanIndex].room || "Tanpa Kamar";
+    let cashL = window.cashLaundryAmount || 0; let cashH = window.cashHotelAmount || 0;
+    let qris = Number(document.getElementById("pay-qris").value) || 0;
+    let transfer = Number(document.getElementById("pay-transfer").value) || 0;
+    let free = Number(document.getElementById("pay-free").value) || 0;
+    
+    let roomNumber = antreans[currentAntreanIndex].room || "Tamu";
     let finalStatus = "Completed"; 
 
     const orderPayload = {
         orderId: "ORD-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId,
         roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, subtotal: window.cartSubtotal, discounts: free, grandTotal: window.cartGrandTotal,
-        paymentMethod: "Split", cashAmount: cash, qrisAmount: qris, transferAmount: transfer, freeAmount: free, syncStatus: "Pending" 
+        paymentMethod: "Split", cashLaundryAmount: cashL, cashHotelAmount: cashH, qrisAmount: qris, transferAmount: transfer, syncStatus: "Pending" 
     };
 
     db.transaction(["orders"], "readwrite").objectStore("orders").add(orderPayload);
     
     if (shouldPrint && typeof window.buildEscPosReceipt === "function") {
-        await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, (cash + qris + transfer), 0, "Split");
+        await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, (cashL + cashH + qris + transfer), 0, "Split");
     }
     
     let mod = document.getElementById("review-modal"); if(mod) mod.classList.add("hidden");
     window.lockMenu(); renderProductGrid(); window.runBackgroundSync();
 };
 
-window.renderActiveTickets = function() {
-    const grid = document.getElementById("ticket-grid-container"); if(!grid) return;
-    grid.innerHTML = "";
-    activeLaundryTickets.forEach((ticket) => {
-        const totalPaid = (ticket.cashAmount||0) + (ticket.qrisAmount||0) + (ticket.transferAmount||0) + (ticket.freeAmount||0);
-        const remaining = ticket.grandTotal - totalPaid;
-        let receiptText = ticket.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
-        
-        let buttonsHtml = `<button class="ticket-btn" style="background:#2ecc71;" onclick="window.openSettlement('${ticket.orderId}', ${remaining})">Pelunasan Tagihan</button>`;
-        grid.innerHTML += `<div class="ticket-card"><div class="ticket-header"><span>Kamar: ${ticket.roomNumber}</span> <span style="color:#7f8c8d; font-size:12px;">${ticket.orderId}</span></div><div style="font-size:14px; margin-bottom:10px; white-space:pre-wrap;">${receiptText}</div><div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:10px; border-top:1px dashed #ddd; padding-top:5px;"><span>Tagihan Sisa:</span> <strong style="color:#e74c3c;">Rp ${remaining.toLocaleString('id-ID')}</strong></div>${buttonsHtml}</div>`;
-    });
-};
-
-window.openSettlement = function(orderId, remainingDue) {
-    activeSettlementTicket = activeLaundryTickets.find(t => t.orderId === orderId);
-    if (remainingDue <= 0) {
-        if(confirm("Tagihan ini sudah LUNAS. Tandai selesai?")) {
-            activeSettlementTicket.orderStatus = "Completed"; 
-            activeSettlementTicket.syncStatus = "Pending";
-            db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
-            activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
-            window.renderActiveTickets(); window.runBackgroundSync();
-            activeSettlementTicket = null;
-        }
-        return; 
-    }
-    let elAmt = document.getElementById("settle-amount"); if(elAmt) elAmt.innerText = `Rp ${remainingDue.toLocaleString('id-ID')}`;
-    let elCash = document.getElementById("settle-cash"); if(elCash) elCash.value = remainingDue;
-    document.getElementById("settlement-modal").classList.remove("hidden");
-};
-
-window.confirmSettlement = function() {
-    if (!activeSettlementTicket) return;
-    const c = Number(document.getElementById("settle-cash").value) || 0; const q = Number(document.getElementById("settle-qris").value) || 0; const t = Number(document.getElementById("settle-transfer").value) || 0;
-    activeSettlementTicket.cashAmount += c; activeSettlementTicket.qrisAmount += q; activeSettlementTicket.transferAmount += t;
-    activeSettlementTicket.orderStatus = "Completed"; activeSettlementTicket.syncStatus = "Pending";
-    db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
-    activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
-    document.getElementById("settlement-modal").classList.add("hidden"); window.renderActiveTickets(); window.runBackgroundSync();
-};
-
 window.openExpenseModal = function() { document.getElementById("expense-modal").classList.remove("hidden"); };
 window.saveExpense = function() {
-    const amount = Number(document.getElementById("exp-amount").value); const category = document.getElementById("exp-category").value.trim();
+    const amount = Number(document.getElementById("exp-amount").value); 
+    const category = document.getElementById("exp-category").value.trim();
+    const drawer = document.getElementById("exp-drawer").value;
     if (amount <= 0 || !category) return alert("Harap masukkan jumlah dan kategori yang benar.");
-    const payload = { expenseId: "EXP-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId, category: category, description: document.getElementById("exp-desc").value || "-", amount: amount, status: "Active", syncStatus: "Pending" };
+    
+    const payload = { expenseId: "EXP-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId, drawer: drawer, category: category, description: document.getElementById("exp-desc").value || "-", amount: amount, status: "Active", syncStatus: "Pending" };
     db.transaction(["expenses"], "readwrite").objectStore("expenses").add(payload);
+    
     document.getElementById("expense-modal").classList.add("hidden"); alert("Pengeluaran Berhasil Dicatat!"); window.runBackgroundSync();
 };
 
@@ -532,7 +504,7 @@ window.renderHistoryList = function(type) {
         
         ordersToDisplay.forEach(o => {
             let badge = o.orderStatus === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : `<span class="status-badge status-paid">${o.orderStatus}</span>`;
-            container.innerHTML += `<div class="history-row"><div><strong>Kamar: ${o.roomNumber}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(o.timestamp)} | Rp ${o.grandTotal.toLocaleString('id-ID')} | Kasir: ${o.cashier}</small></div><div style="display:flex; align-items:center; gap:8px;">${badge}</div></div>`;
+            container.innerHTML += `<div class="history-row"><div><strong>${o.roomNumber}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(o.timestamp)} | Rp ${o.grandTotal.toLocaleString('id-ID')} | Kasir: ${o.cashier}</small></div><div style="display:flex; align-items:center; gap:8px;">${badge}</div></div>`;
         });
         
     } else if (type === 'expenses') {
@@ -541,7 +513,7 @@ window.renderHistoryList = function(type) {
         
         expensesToDisplay.forEach(exp => {
             let badge = exp.status === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : `<span class="status-badge status-paid">Aktif</span>`;
-            container.innerHTML += `<div class="history-row"><div><strong>${exp.category}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(exp.timestamp)} | Rp ${exp.amount.toLocaleString('id-ID')} | Kasir: ${exp.cashier}</small><br><small>${exp.description}</small></div><div style="display:flex; align-items:center; gap:10px;">${badge}</div></div>`;
+            container.innerHTML += `<div class="history-row"><div><strong>[${exp.drawer}] ${exp.category}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(exp.timestamp)} | Rp ${exp.amount.toLocaleString('id-ID')} | Kasir: ${exp.cashier}</small><br><small>${exp.description}</small></div><div style="display:flex; align-items:center; gap:10px;">${badge}</div></div>`;
         });
         
     } else if (type === 'shifts') {
@@ -560,9 +532,12 @@ window.renderHistoryList = function(type) {
 window.openCashDrop = function() { document.getElementById("cash-drop-modal").classList.remove("hidden"); };
 window.submitCashDrop = function() {
     const amount = Number(document.getElementById("drop-amount").value) || 0;
+    const drawer = document.getElementById("drop-drawer").value;
     if (amount <= 0) return alert("Masukkan nominal setor uang.");
-    const payload = { dropId: "DRP-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId, amount: amount, notes: document.getElementById("drop-notes").value || "-", syncStatus: "Pending" };
+    
+    const payload = { dropId: "DRP-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId, drawer: drawer, amount: amount, notes: document.getElementById("drop-notes").value || "-", syncStatus: "Pending" };
     db.transaction(["cash_drops"], "readwrite").objectStore("cash_drops").add(payload);
+    
     document.getElementById("cash-drop-modal").classList.add("hidden"); alert("Setoran berhasil dicatat!"); window.runBackgroundSync();
 };
 
@@ -575,41 +550,26 @@ window.syncMasterData = async function(forceAwait = false) {
         const result = await response.json();
         
         if (result.status === "Success") {
-            window.masterDrawerBalance = result.masterDrawerBalance || 0;
+            window.masterDrawerBalanceLaundry = result.masterDrawerBalanceLaundry || 0;
+            window.masterDrawerBalanceHotel = result.masterDrawerBalanceHotel || 0;
             window.globalRecentOrders = result.data.recentOrders || [];
             window.globalRecentExpenses = result.data.recentExpenses || [];
             window.globalRecentShifts = result.recentShifts || [];
             
-            // Parse Room List
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
             let p1 = new Promise((resolve) => {
                 let txFast = db.transaction(["staff", "menu"], "readwrite");
-                txFast.objectStore("staff").clear(); 
-                
-                // CHANGED TO .put() TO PREVENT CRASHES
-                result.data.staff.forEach(s => txFast.objectStore("staff").put(s));
-                
-                txFast.objectStore("menu").clear(); 
-                
-                // CHANGED TO .put() TO PREVENT CRASHES FROM DUPLICATE ITEM IDs
-                result.data.menu.forEach(m => txFast.objectStore("menu").put(m));
+                txFast.objectStore("staff").clear(); result.data.staff.forEach(s => txFast.objectStore("staff").put(s));
+                txFast.objectStore("menu").clear(); result.data.menu.forEach(m => txFast.objectStore("menu").put(m));
                 
                 txFast.oncomplete = () => {
                     globalMenuData = result.data.menu; 
                     if (!document.getElementById("pos-screen").classList.contains("hidden")) { loadMenuUI(); }
-                    if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71"; 
-                    resolve();
-                };
-                
-                // ADDED ERROR CATCHER SO IT DOESN'T FAIL SILENTLY
-                txFast.onerror = (e) => {
-                    console.error("Database Save Error:", e.target.error);
-                    if(nTxt) nTxt.innerText = "Error Data Ganda"; if(nDot) nDot.style.backgroundColor = "#e74c3c";
-                    resolve();
+                    if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71"; resolve();
                 };
             });
-            if(forceAwait) await p1;
+            if(forceAwait) await p1; 
         }
     } catch (e) { if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; }
 };
@@ -657,35 +617,78 @@ window.openShiftReport = function() {
     tx.oncomplete = () => {
         let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId);
         let shiftExpenses = activeExpenses.filter(e => e.shiftId === currentShiftId);
-        let tCust = 0; let tOrders = 0; let tOmset = 0; let tCash = 0; let tQris = 0; let tTransfer = 0; let tFree = 0; let tExpense = 0; let foodSummary = {};
+        
+        let tOrders = 0; let tFree = 0;
+        let omsetL = 0; let omsetH = 0;
+        let cashL = 0; let cashH = 0;
+        let qrisL = 0; let transferH = 0;
+        let foodSummary = {};
         
         shiftOrders.forEach(o => {
-            tOrders++; if (o.roomNumber && o.roomNumber !== "Tanpa Kamar") tCust++;
-            tOmset += o.grandTotal; tCash += (o.cashAmount || 0); tQris += (o.qrisAmount || 0); tTransfer += (o.transferAmount || 0); tFree += (o.freeAmount || 0);
-            if (o.items) o.items.forEach(i => { foodSummary[i.name] = (foodSummary[i.name] || 0) + i.qty; });
+            tOrders++; tFree += (o.discounts || 0);
+            cashL += (o.cashLaundryAmount || 0); cashH += (o.cashHotelAmount || 0);
+            qrisL += (o.qrisAmount || 0); transferH += (o.transferAmount || 0);
+            
+            let orderOmsetL = 0; let orderOmsetH = 0;
+            if (o.items) o.items.forEach(i => { 
+                let lineTotal = i.qty * i.price;
+                if(i.location && i.location.toLowerCase().includes('laundry')) orderOmsetL += lineTotal;
+                else orderOmsetH += lineTotal;
+                
+                let loc = i.location || "Lainnya"; let cat = i.category || "Lainnya";
+                if(!foodSummary[loc]) foodSummary[loc] = {};
+                if(!foodSummary[loc][cat]) foodSummary[loc][cat] = {};
+                foodSummary[loc][cat][i.name] = (foodSummary[loc][cat][i.name] || 0) + i.qty;
+            });
+            omsetL += orderOmsetL; omsetH += orderOmsetH;
         });
-        shiftExpenses.forEach(exp => { tExpense += (exp.amount || 0); });
-        let netCash = Math.max(0, tCash - tExpense);
+
+        let expL = 0; let expH = 0;
+        shiftExpenses.forEach(e => {
+            if (e.drawer === 'Laundry') expL += e.amount;
+            else expH += e.amount;
+        });
+
+        let netL = Math.max(0, cashL - expL);
+        let netH = Math.max(0, cashH - expH);
 
         window.currentShiftData = { 
             shiftId: currentShiftId, loginTime: currentLoginTime, logoutTime: new Date().toISOString(), cashier: currentCashier, 
-            totalCustomers: tCust, totalOrders: tOrders, totalOmset: tOmset, totalCash: tCash, totalQris: tQris, totalTransfer: tTransfer, totalFree: tFree, totalExpenses: tExpense, netCash: netCash, foodSummary: foodSummary
+            totalOrders: tOrders, totalFree: tFree, 
+            omsetLaundry: omsetL, omsetHotel: omsetH,
+            cashLaundry: cashL, cashHotel: cashH,
+            qrisLaundry: qrisL, transferHotel: transferH,
+            expLaundry: expL, expHotel: expH,
+            netLaundry: netL, netHotel: netH,
+            foodSummary: foodSummary
         };
         
         if (document.getElementById("sr-orders")) document.getElementById("sr-orders").innerText = tOrders;
-        if (document.getElementById("sr-customers")) document.getElementById("sr-customers").innerText = tCust;
-        if (document.getElementById("sr-omset")) document.getElementById("sr-omset").innerText = "Rp " + tOmset.toLocaleString('id-ID');
-        if (document.getElementById("sr-cash")) document.getElementById("sr-cash").innerText = "Rp " + tCash.toLocaleString('id-ID');
-        if (document.getElementById("sr-qris")) document.getElementById("sr-qris").innerText = "Rp " + tQris.toLocaleString('id-ID');
-        if (document.getElementById("sr-transfer")) document.getElementById("sr-transfer").innerText = "Rp " + tTransfer.toLocaleString('id-ID');
-        if (document.getElementById("sr-free")) document.getElementById("sr-free").innerText = "Rp " + tFree.toLocaleString('id-ID');
-        if (document.getElementById("sr-expense")) document.getElementById("sr-expense").innerText = "Rp " + tExpense.toLocaleString('id-ID');
-        if (document.getElementById("sr-net")) document.getElementById("sr-net").innerText = "Rp " + netCash.toLocaleString('id-ID');
+        if (document.getElementById("sr-omset-laundry")) document.getElementById("sr-omset-laundry").innerText = "Rp " + omsetL.toLocaleString('id-ID');
+        if (document.getElementById("sr-omset-hotel")) document.getElementById("sr-omset-hotel").innerText = "Rp " + omsetH.toLocaleString('id-ID');
+        if (document.getElementById("sr-discounts")) document.getElementById("sr-discounts").innerText = "-Rp " + tFree.toLocaleString('id-ID');
+        
+        if (document.getElementById("sr-cash-laundry")) document.getElementById("sr-cash-laundry").innerText = "Rp " + cashL.toLocaleString('id-ID');
+        if (document.getElementById("sr-cash-hotel")) document.getElementById("sr-cash-hotel").innerText = "Rp " + cashH.toLocaleString('id-ID');
+        if (document.getElementById("sr-qris-laundry")) document.getElementById("sr-qris-laundry").innerText = "Rp " + qrisL.toLocaleString('id-ID');
+        if (document.getElementById("sr-transfer-hotel")) document.getElementById("sr-transfer-hotel").innerText = "Rp " + transferH.toLocaleString('id-ID');
+
+        if (document.getElementById("sr-exp-laundry")) document.getElementById("sr-exp-laundry").innerText = "Rp " + expL.toLocaleString('id-ID');
+        if (document.getElementById("sr-exp-hotel")) document.getElementById("sr-exp-hotel").innerText = "Rp " + expH.toLocaleString('id-ID');
+
+        if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + netL.toLocaleString('id-ID');
+        if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + netH.toLocaleString('id-ID');
 
         let foodHtml = "";
-        for (const [name, qty] of Object.entries(foodSummary)) {
-            let qtyStr = (qty % 1 !== 0) ? Number(qty).toFixed(2) : qty;
-            foodHtml += `<div style="display:flex; justify-content:space-between; border-bottom:1px dashed #eee; padding:4px 0;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
+        for (const [locName, categories] of Object.entries(foodSummary)) {
+            foodHtml += `<div style="font-weight:bold; color:#e67e22; margin-top:10px;">📍 ${locName}</div>`;
+            for (const [catName, items] of Object.entries(categories)) {
+                foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-left:10px; margin-top:5px; font-size:12px;">📁 ${catName}</div>`;
+                for (const [name, qty] of Object.entries(items)) {
+                    let qtyStr = (qty % 1 !== 0) ? Number(qty).toFixed(2) : qty;
+                    foodHtml += `<div style="display:flex; justify-content:space-between; border-bottom:1px dashed #eee; padding:2px 0; margin-left:20px;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
+                }
+            }
         }
         if (document.getElementById("sr-items-summary")) document.getElementById("sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
 
