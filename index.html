@@ -57,7 +57,6 @@
 
         #cart-section { flex: 4; display: flex; flex-direction: column; background: #fdfbf7; }
         #cart-header { padding: 15px; background: #2c3e50; color: white; font-weight: bold; text-align: center; display: flex; justify-content: space-between; align-items: center;}
-        #promo-indicator { background: #f1c40f; color: #856404; font-size: 12px; padding: 4px 8px; border-radius: 12px; font-weight: bold; }
         #cart-items { flex: 1; padding: 15px; overflow-y: auto; }
         .cart-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px dashed #ccc; font-size: 15px; }
         
@@ -139,46 +138,41 @@
 
         <div id="main-workspace-wrapper" class="hidden">
             <div id="main-workspace">
-<div id="menu-section">
-    <div id="command-bar">...</div>
-    
-    <div class="category-tabs" id="location-container" style="background: #2c3e50; padding-bottom: 0;"></div>
-    
-    <div class="category-tabs" id="category-container" style="background: #ecf0f1;"></div>
-    
-    <div id="product-grid"></div>
+                <div id="menu-section">
+                    <div id="command-bar">
                         <div id="customer-input-section">
                             <div class="input-group">
                                 <div class="autocomplete-wrapper" style="flex:1;">
-                                    <input type="text" id="cust-phone" placeholder="Ketik No Telp / Kamar..." autocomplete="off" style="width:100%;" oninput="window.handleAutocomplete(event)" onclick="window.handleAutocomplete(event)" onfocus="window.handleAutocomplete(event)">
+                                    <input type="text" id="room-input" placeholder="Pilih / Ketik No Kamar..." autocomplete="off" style="width:100%;" oninput="window.handleAutocomplete(event)" onclick="window.handleAutocomplete(event)" onfocus="window.handleAutocomplete(event)">
                                     <div id="autocomplete-results" class="hidden"></div>
                                 </div>
-                                <input type="text" id="cust-name" placeholder="Nama Tamu" autocomplete="off" style="flex:1;" oninput="window.handleAutocomplete(event)" onclick="window.handleAutocomplete(event)" onfocus="window.handleAutocomplete(event)">
                             </div>
                             <div class="btn-action-group">
                                 <button onclick="unlockMenu(false)" style="background:#27ae60; color:white;">Buka Menu</button>
-                                <button onclick="unlockMenu(true)" style="background:#95a5a6; color:white;">Tamu Walk-in</button>
+                                <button onclick="unlockMenu(true)" style="background:#95a5a6; color:white;">Tanpa Kamar</button>
                             </div>
                         </div>
                         
                         <div id="active-customer-banner" class="hidden">
                             <div style="font-size:16px; color:#2c3e50; font-weight:bold;">
-                                👤 <span id="active-cust-name">---</span> 
-                                <span style="font-size:12px; color:#7f8c8d; font-weight:normal; margin-left:5px;" id="active-cust-phone"></span>
+                                🚪 Kamar: <span id="active-room-display">---</span> 
                             </div>
                             <div style="display:flex; gap:10px;">
                                 <button onclick="lockMenu()" style="background:#e74c3c; color:white; border:none; padding:8px 12px; border-radius:6px; font-weight:bold; cursor:pointer;">Ganti / Kunci</button>
                             </div>
                         </div>
                     </div>
-                     
-                    <div class="category-tabs" id="category-container"></div>
+                    
+                    <div class="category-tabs" id="location-container" style="background: #2c3e50; padding-bottom: 0;"></div>
+                    
+                    <div class="category-tabs" id="category-container" style="background: #ecf0f1;"></div>
+                    
                     <div id="product-grid"></div>
                      
                     <div id="glass-overlay">
                         <h1 style="color:#2c3e50; font-size:48px; margin:0;">🔒</h1>
-                        <h2 style="color:#2c3e50;">Pilih Tamu Dahulu</h2>
-                        <p style="color:#7f8c8d; max-width:350px; margin:0 auto;">Ketik Identitas / No Kamar di atas, lalu klik <strong>Buka Menu</strong>. Atau klik Tamu Walk-in.</p>
+                        <h2 style="color:#2c3e50;">Pilih Kamar Dahulu</h2>
+                        <p style="color:#7f8c8d; max-width:350px; margin:0 auto;">Ketik Nomor Kamar di atas, lalu klik <strong>Buka Menu</strong>. Atau klik Tanpa Kamar.</p>
                     </div>
                 </div>
                  
@@ -315,7 +309,7 @@
             <div style="text-align: center; margin-bottom: 20px;"><h2 style="margin:0; color: #2c3e50;">📊 Laporan Akhir Shift</h2></div>
             <div class="stats-grid">
                 <div class="ticket-card" style="border-left:none; padding:10px; margin-bottom:0;"><div class="stat-box"><div class="stat-label">Total Transaksi</div><div class="stat-value" id="sr-orders">0</div></div></div>
-                <div class="ticket-card" style="border-left:none; padding:10px; margin-bottom:0;"><div class="stat-box"><div class="stat-label">Tamu</div><div class="stat-value" id="sr-customers">0</div></div></div>
+                <div class="ticket-card" style="border-left:none; padding:10px; margin-bottom:0;"><div class="stat-box"><div class="stat-label">Tamu/Kamar</div><div class="stat-value" id="sr-customers">0</div></div></div>
                 <div class="stat-box" style="grid-column: span 2; background: #e8f4f8; border-color: #bee5eb;"><div class="stat-label" style="color: #0c5460;">Total Omset Kotor</div><div class="stat-value" id="sr-omset" style="font-size: 28px; color: #0c5460;">Rp 0</div></div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
