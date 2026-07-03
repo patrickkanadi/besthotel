@@ -468,7 +468,9 @@ window.handleAutocomplete = function(e) {
     if (!resBox) return;
 
     let matches = window.globalRoomList || [];
-    if (val.length > 0) matches = matches.filter(r => r.toLowerCase().includes(val));
+    if (val.length > 0) {
+        matches = matches.filter(r => r.toLowerCase().includes(val));
+    }
     
     if (matches.length > 0) {
         resBox.innerHTML = matches.map(r => `
@@ -709,7 +711,7 @@ window.calculateRemaining = function() {
 };
 
 window.finalizeOrder = async function(shouldPrint) {
-    window.calculateRemaining(); // Final safety check
+    window.calculateRemaining(); 
 
     let cashL = window.cashLaundryAmount || 0; let cashH = window.cashHotelAmount || 0;
     let qris = Number(document.getElementById("pay-qris").value) || 0;
@@ -718,15 +720,21 @@ window.finalizeOrder = async function(shouldPrint) {
     
     if ((window.cartGrandTotal - (cashL + cashH + qris + transfer)) > 0) return alert("⚠️ Pembayaran Belum Cukup!");
 
+    if (shouldPrint && !btCharacteristic) {
+        alert("⚠️ Printer belum terhubung! Nota batal dicetak, namun transaksi tetap akan diselesaikan dan direkam ke sistem. (Sambungkan printer di menu atas)");
+        shouldPrint = false;
+    }
+
     let roomNumber = antreans[currentAntreanIndex].room || "Tamu Umum";
     
-    // SPK TRIGGER CHECK
     let hasTicketItem = currentCart.some(i => i.workflow === "TICKET");
     let finalStatus = hasTicketItem ? "Processing" : "Completed";
 
+    // ✅ Note: guestName and guestPhone are gone. The Backend does it automatically now.
     const orderPayload = {
         orderId: "ORD-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId,
-        roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, subtotal: window.cartSubtotal, discounts: free, grandTotal: window.cartGrandTotal,
+        roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, 
+        subtotal: window.cartSubtotal, discounts: free, grandTotal: window.cartGrandTotal,
         paymentMethod: "Split", cashLaundryAmount: cashL, cashHotelAmount: cashH, qrisAmount: qris, transferAmount: transfer, freeAmount: free, syncStatus: "Pending" 
     };
 
@@ -932,9 +940,14 @@ window.submitCashDrop = function() {
 window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot");
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; }
+    
     try {
-        const response = await fetch(`${API_URL}?t=${Date.now()}`, { method: 'GET' }); 
-        if (!response.ok) throw new Error("Network response was not ok");
+        const response = await fetch(`${API_URL}?t=${Date.now()}`, { 
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        }); 
+        
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const result = await response.json();
         
         if (result.status === "Success") {
@@ -944,6 +957,7 @@ window.syncMasterData = async function(forceAwait = false) {
             window.globalRecentExpenses = result.data.recentExpenses || [];
             window.globalRecentShifts = result.recentShifts || [];
             
+            // ✅ REVERTED TO SIMPLE ARRAY OF STRINGS
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
             let p1 = new Promise((resolve) => {
@@ -951,7 +965,6 @@ window.syncMasterData = async function(forceAwait = false) {
                 txFast.objectStore("staff").clear(); result.data.staff.forEach(s => txFast.objectStore("staff").put(s));
                 txFast.objectStore("menu").clear(); result.data.menu.forEach(m => txFast.objectStore("menu").put(m));
                 
-                // Refresh Expense Categories Database
                 txFast.objectStore("expense_categories").clear();
                 if (result.data.expenseCategories) {
                     result.data.expenseCategories.forEach(c => txFast.objectStore("expense_categories").put({name: c}));
@@ -969,8 +982,14 @@ window.syncMasterData = async function(forceAwait = false) {
                 };
             });
             if(forceAwait) await p1; 
+        } else {
+             throw new Error(result.message || "Unknown Server Error");
         }
-    } catch (e) { if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; }
+    } catch (e) { 
+        console.error(e);
+        if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; 
+        if(forceAwait) alert("Gagal menghubungi server Google. Pastikan Web App di-deploy dengan 'Execute as: Me' dan 'Who has access: Anyone'.\n\nDetail: " + e.message);
+    }
 };
 
 window.manualPushSync = async function() { await window.runBackgroundSync(); await window.syncMasterData(); alert("Sinkronisasi Database Berhasil!"); };
