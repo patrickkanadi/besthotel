@@ -1,6 +1,6 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbykTybIX-9YVGytTKeCBbDdpU9ihP3lbYFaAEBJQA0iE7uaPpI7Te1U568pZdTian_-mw/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
-const DB_VERSION = 3; 
+const DB_VERSION = 5; 
 let db;
 
 let antreans = [
@@ -179,6 +179,7 @@ window.switchWorkspace = function(type) {
     } else {
         document.getElementById("tab-active-tickets").classList.add("active");
         document.getElementById("active-tickets-workspace").classList.remove("hidden");
+        window.renderActiveTickets(); 
     }
 };
 window.lockScreen = function() { window.location.reload(); };
@@ -211,7 +212,7 @@ window.switchAntrean = function(index) {
         if (acb) acb.classList.add("hidden");
         if (gl) { gl.style.opacity = "1"; gl.style.pointerEvents = "auto"; }
     } else {
-        let roomDisp = antreans[currentAntreanIndex].room || "Tamu";
+        let roomDisp = antreans[currentAntreanIndex].room || "Tamu Umum";
         let acn = document.getElementById("active-room-display"); if (acn) acn.innerText = roomDisp;
         if (cis) cis.classList.add("hidden");
         if (acb) acb.classList.remove("hidden");
@@ -247,7 +248,7 @@ function proceedToUnlock(room) {
 }
 
 window.unlockMenu = function(isGuest) {
-    let room = "Tamu";
+    let room = "Tamu Umum";
     let ri = document.getElementById("room-input");
     
     if (isGuest) { 
@@ -358,8 +359,17 @@ window.numpadPress = function(val) {
 window.confirmNumpad = function() { let qty = parseFloat(numpadValue); if (qty > 0) window.addToCart(activeNumpadItem, qty); window.closeNumpad(); };
 
 window.addToCart = function(item, qty) {
+    let finalQty = qty;
     const existing = currentCart.find(i => i.itemId === item.itemId);
-    if (existing) { existing.qty += qty; } else { currentCart.push({ ...item, qty: qty, originalPrice: item.price }); }
+    
+    // ✅ MOQ ENFORCEMENT ON FIRST ADD
+    if (!existing && item.hasMoq && item.moqQty > 0 && finalQty < item.moqQty) { 
+        alert(`⚠️ Minimum Order (MOQ) untuk ${item.name} adalah ${item.moqQty}.\nJumlah otomatis disesuaikan.`); 
+        finalQty = item.moqQty; 
+    }
+
+    if (existing) { existing.qty += finalQty; } 
+    else { currentCart.push({ ...item, qty: finalQty, originalPrice: item.price, workflow: item.workflow, hasMoq: item.hasMoq, moqQty: item.moqQty }); }
     window.renderCart();
 };
 
@@ -367,6 +377,15 @@ window.updateCartItemQty = function(itemId, delta) {
     let existing = currentCart.find(i => i.itemId === itemId);
     if (existing) {
         existing.qty += delta;
+        
+        // ✅ MOQ ENFORCEMENT ON REDUCE
+        if (existing.hasMoq && existing.moqQty > 0) { 
+            if (existing.qty > 0 && existing.qty < existing.moqQty) { 
+                if (delta < 0) existing.qty = 0; // If subtracting below MOQ, completely remove it
+                else existing.qty = existing.moqQty; // Fallback
+            } 
+        }
+        
         if (existing.qty <= 0) currentCart = currentCart.filter(i => i.itemId !== itemId);
         window.renderCart();
     }
@@ -460,23 +479,95 @@ window.finalizeOrder = async function(shouldPrint) {
     let transfer = Number(document.getElementById("pay-transfer").value) || 0;
     let free = Number(document.getElementById("pay-free").value) || 0;
     
-    let roomNumber = antreans[currentAntreanIndex].room || "Tamu";
-    let finalStatus = "Completed"; 
+    if ((window.cartGrandTotal - (cashL + cashH + qris + transfer)) > 0) return alert("⚠️ Pembayaran Belum Cukup!");
+
+    let roomNumber = antreans[currentAntreanIndex].room || "Tamu Umum";
+    
+    // SPK TRIGGER CHECK: Does this cart contain anything with a Workflow = TICKET?
+    let hasTicketItem = currentCart.some(i => i.workflow === "TICKET");
+    let finalStatus = hasTicketItem ? "Processing" : "Completed";
 
     const orderPayload = {
         orderId: "ORD-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId,
         roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, subtotal: window.cartSubtotal, discounts: free, grandTotal: window.cartGrandTotal,
-        paymentMethod: "Split", cashLaundryAmount: cashL, cashHotelAmount: cashH, qrisAmount: qris, transferAmount: transfer, syncStatus: "Pending" 
+        paymentMethod: "Split", cashLaundryAmount: cashL, cashHotelAmount: cashH, qrisAmount: qris, transferAmount: transfer, freeAmount: free, syncStatus: "Pending" 
     };
 
     db.transaction(["orders"], "readwrite").objectStore("orders").add(orderPayload);
     
+    // Send to "Active Tickets" UI if needed
+    if (finalStatus === "Processing") {
+        activeLaundryTickets.push(orderPayload);
+        let tc = document.getElementById("ticket-count"); if(tc) tc.innerText = activeLaundryTickets.length;
+    }
+
     if (shouldPrint && typeof window.buildEscPosReceipt === "function") {
         await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, (cashL + cashH + qris + transfer), 0, "Split");
     }
     
     let mod = document.getElementById("review-modal"); if(mod) mod.classList.add("hidden");
     window.lockMenu(); renderProductGrid(); window.runBackgroundSync();
+};
+
+window.renderActiveTickets = function() {
+    const grid = document.getElementById("ticket-grid-container"); if(!grid) return;
+    grid.innerHTML = "";
+    activeLaundryTickets.forEach((ticket) => {
+        const isReady = ticket.orderStatus === "Ready for Pickup";
+        const totalPaid = (ticket.cashLaundryAmount||0) + (ticket.cashHotelAmount||0) + (ticket.qrisAmount||0) + (ticket.transferAmount||0) + (ticket.freeAmount||0);
+        const remaining = ticket.grandTotal - totalPaid;
+        let receiptText = ticket.readableReceipt || ticket.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
+        
+        let buttonsHtml = "";
+        if (!isReady) { 
+            buttonsHtml = `<button class="ticket-btn" style="background:#f39c12;" onclick="window.markTicketReady('${ticket.orderId}')">Tandai Selesai Diproses (Ready)</button>`; 
+        } else { 
+            buttonsHtml = `<button class="ticket-btn" style="background:#2ecc71;" onclick="window.openSettlement('${ticket.orderId}', ${remaining})">Ambil Layanan & Pelunasan</button>`; 
+        }
+        grid.innerHTML += `<div class="ticket-card ${isReady ? 'ready' : ''}"><div class="ticket-header"><span>Kamar: ${ticket.roomNumber}</span> <span style="color:#7f8c8d; font-size:12px;">${ticket.orderId}</span></div><div style="font-size:14px; margin-bottom:10px; white-space:pre-wrap;">${receiptText}</div><div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:10px; border-top:1px dashed #ddd; padding-top:5px;"><span>Tagihan Sisa:</span> <strong style="color:#e74c3c;">Rp ${remaining.toLocaleString('id-ID')}</strong></div>${buttonsHtml}</div>`;
+    });
+};
+
+window.markTicketReady = function(orderId) {
+    if(confirm("Tandai pesanan ini selesai diproses dan siap diambil?")) {
+        const ticket = activeLaundryTickets.find(t => t.orderId === orderId);
+        if (ticket) {
+            ticket.orderStatus = "Ready for Pickup"; ticket.syncStatus = "Pending";
+            db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
+            window.renderActiveTickets(); window.runBackgroundSync();
+        }
+    }
+};
+
+window.openSettlement = function(orderId, remainingDue) {
+    activeSettlementTicket = activeLaundryTickets.find(t => t.orderId === orderId);
+    if (remainingDue <= 0) {
+        if(confirm("Tagihan ini sudah LUNAS. Tandai selesai?")) {
+            activeSettlementTicket.orderStatus = "Completed"; 
+            activeSettlementTicket.syncStatus = "Pending";
+            db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
+            activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
+            window.renderActiveTickets(); window.runBackgroundSync();
+            activeSettlementTicket = null;
+        }
+        return; 
+    }
+    let elAmt = document.getElementById("settle-amount"); if(elAmt) elAmt.innerText = `Rp ${remainingDue.toLocaleString('id-ID')}`;
+    let elCash = document.getElementById("settle-cash"); if(elCash) elCash.value = remainingDue;
+    document.getElementById("settlement-modal").classList.remove("hidden");
+};
+
+window.confirmSettlement = function() {
+    if (!activeSettlementTicket) return;
+    const c = Number(document.getElementById("settle-cash").value) || 0; const q = Number(document.getElementById("settle-qris").value) || 0; const t = Number(document.getElementById("settle-transfer").value) || 0;
+    
+    // We assume leftover cash payments default to the general transaction sum logic when syncing to Sheets
+    activeSettlementTicket.cashHotelAmount += c; activeSettlementTicket.qrisAmount += q; activeSettlementTicket.transferAmount += t;
+    activeSettlementTicket.orderStatus = "Completed"; activeSettlementTicket.syncStatus = "Pending";
+    
+    db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
+    activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
+    document.getElementById("settlement-modal").classList.add("hidden"); window.renderActiveTickets(); window.runBackgroundSync();
 };
 
 window.openExpenseModal = function() { document.getElementById("expense-modal").classList.remove("hidden"); };
@@ -565,7 +656,15 @@ window.syncMasterData = async function(forceAwait = false) {
                 
                 txFast.oncomplete = () => {
                     globalMenuData = result.data.menu; 
-                    if (!document.getElementById("pos-screen").classList.contains("hidden")) { loadMenuUI(); }
+                    
+                    // Restoring SPK Tickets from Backend
+                    window.activeLaundryTickets = result.data.activeLaundryOrders || [];
+                    let tc = document.getElementById("ticket-count"); if(tc) tc.innerText = activeLaundryTickets.length;
+                    
+                    if (!document.getElementById("pos-screen").classList.contains("hidden")) { 
+                        loadMenuUI(); 
+                        window.renderActiveTickets();
+                    }
                     if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71"; resolve();
                 };
             });
