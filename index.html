@@ -415,6 +415,17 @@
         </div>
     </div>
 
+    <div id="void-auth-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 350px; text-align:center;">
+            <h2 style="margin-top:0; color:#e74c3c;">⚠️ Batalkan Data</h2>
+            <p style="color:#7f8c8d; font-size:14px;">Data akan ditandai "Void Pending" dan menunggu persetujuan Admin.<br><br>Admin harus mengetik 'ok' atau 'batal' pada kolom Void Auth di Google Sheets.</p>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button onclick="document.getElementById('void-auth-modal').classList.add('hidden')" style="flex:1; padding:15px; border-radius:8px; border:none; font-weight:bold; background:#ecf0f1; cursor:pointer;">Tutup</button>
+                <button onclick="submitVoidRequest()" style="flex:2; padding:15px; border-radius:8px; border:none; font-weight:bold; background:#e74c3c; color:white; cursor:pointer;">Ajukan Void</button>
+            </div>
+        </div>
+    </div>
+    
     <script src="app.js"></script>
 </body>
 </html>
