@@ -376,9 +376,31 @@ function renderProductGrid() {
     const grid = document.getElementById("product-grid"); if(!grid) return;
     grid.innerHTML = "";
     globalMenuData.filter(i => i.location === currentLocation && i.category === currentCategory).forEach(item => {
-        const card = document.createElement("div"); card.className = "product-card";
-        card.innerHTML = `<div><h4>${item.name}</h4></div><div class="price-badge">Rp ${item.price.toLocaleString('id-ID')}</div>`;
-        card.onclick = () => { if(!isMenuLocked) { if(item.inputMode === "DECIMAL") window.openNumpad(item); else window.addToCart(item, 1); } };
+        
+        // Calculate remaining stock based on what is already inside the cart
+        let cartItem = currentCart.find(i => i.itemId === item.itemId);
+        let qtyInCart = cartItem ? cartItem.qty : 0;
+        let stockRemaining = item.currentStock - qtyInCart;
+        
+        let isOutOfStock = item.trackStock && stockRemaining <= 0;
+        
+        const card = document.createElement("div"); 
+        card.className = "product-card";
+        if (isOutOfStock) card.style.opacity = "0.5"; // Gray out the card
+        
+        let stockLabel = item.trackStock ? `<div style="font-size:11px; color:#e74c3c; font-weight:bold; margin-top:5px;">Sisa Stok: ${stockRemaining}</div>` : "";
+
+        card.innerHTML = `<div style="flex:1;"><h4 style="margin: 5px 0;">${item.name}</h4></div>
+                          <div class="price-badge" style="${isOutOfStock ? 'background:#e74c3c; color:white;' : ''}">${isOutOfStock ? 'HABIS' : 'Rp ' + item.price.toLocaleString('id-ID')}</div>
+                          ${stockLabel}`;
+                          
+        card.onclick = () => { 
+            if(!isMenuLocked) { 
+                if (isOutOfStock) return alert(`⚠️ Stok ${item.name} sudah habis!`);
+                if (item.inputMode === "DECIMAL") window.openNumpad(item); 
+                else window.addToCart(item, 1); 
+            } 
+        };
         grid.appendChild(card);
     });
 }
@@ -395,38 +417,57 @@ window.addToCart = function(item, qty) {
     let finalQty = qty;
     const existing = currentCart.find(i => i.itemId === item.itemId);
     
-    // ✅ MOQ ENFORCEMENT ON FIRST ADD
+    // VALIDATE MOQ
     if (!existing && item.hasMoq && item.moqQty > 0 && finalQty < item.moqQty) { 
         alert(`⚠️ Minimum Order (MOQ) untuk ${item.name} adalah ${item.moqQty}.\nJumlah otomatis disesuaikan.`); 
         finalQty = item.moqQty; 
     }
+    
+    // VALIDATE STOCK LIMITS FOR NUMPAD ENTRY
+    if (item.trackStock && finalQty > item.currentStock) {
+        alert(`⚠️ Stok tidak cukup! Sisa stok ${item.name} di sistem hanya: ${item.currentStock}`);
+        return;
+    }
 
     if (existing) { existing.qty += finalQty; } 
-    else { currentCart.push({ ...item, qty: finalQty, originalPrice: item.price, workflow: item.workflow, hasMoq: item.hasMoq, moqQty: item.moqQty }); }
+    else { currentCart.push({ ...item, qty: finalQty, originalPrice: item.price, workflow: item.workflow, trackStock: item.trackStock, currentStock: item.currentStock, hasMoq: item.hasMoq, moqQty: item.moqQty }); }
+    
     window.renderCart();
+    renderProductGrid(); // Update the stock UI numbers instantly
 };
 
 window.updateCartItemQty = function(itemId, delta) {
     let existing = currentCart.find(i => i.itemId === itemId);
     if (existing) {
+        // VALIDATE MAX STOCK 
+        if (delta > 0 && existing.trackStock && (existing.qty + delta) > existing.currentStock) {
+            return alert(`⚠️ Stok maksimal tercapai! Sisa stok di sistem hanya: ${existing.currentStock}`);
+        }
+
         existing.qty += delta;
         
-        // ✅ MOQ ENFORCEMENT ON REDUCE
+        // VALIDATE MOQ (Removes entirely if drops below MOQ)
         if (existing.hasMoq && existing.moqQty > 0) { 
             if (existing.qty > 0 && existing.qty < existing.moqQty) { 
-                if (delta < 0) existing.qty = 0; // If subtracting below MOQ, completely remove it
-                else existing.qty = existing.moqQty; // Fallback
+                if (delta < 0) existing.qty = 0; 
+                else existing.qty = existing.moqQty; 
             } 
         }
         
         if (existing.qty <= 0) currentCart = currentCart.filter(i => i.itemId !== itemId);
+        
         window.renderCart();
+        renderProductGrid(); // Update the stock UI numbers instantly
     }
 };
 
 window.clearCart = function() {
     if (currentCart.length === 0) return alert("Keranjang sudah kosong!");
-    if (confirm("Apakah Anda yakin ingin membatalkan order?")) { currentCart = []; window.renderCart(); }
+    if (confirm("Apakah Anda yakin ingin membatalkan order?")) { 
+        currentCart = []; 
+        window.renderCart(); 
+        renderProductGrid(); // Reset the stock UI numbers
+    }
 };
 
 window.renderCart = function() {
@@ -842,16 +883,21 @@ window.openShiftReport = function() {
         if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + netL.toLocaleString('id-ID');
         if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + netH.toLocaleString('id-ID');
 
+        // ... (inside window.openShiftReport, replace the foodHtml loop) ...
+        
         let foodHtml = "";
         for (const [locName, categories] of Object.entries(foodSummary)) {
-            foodHtml += `<div style="font-weight:bold; color:#e67e22; margin-top:10px;">📍 ${locName}</div>`;
+            // "break-inside: avoid" prevents the 3-columns from splitting a category halfway
+            foodHtml += `<div style="break-inside: avoid; margin-bottom: 12px; background: #f9f9f9; padding: 6px; border-radius: 6px; border: 1px solid #eee;">`;
+            foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px;">📍 ${locName}</div>`;
             for (const [catName, items] of Object.entries(categories)) {
-                foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-left:10px; margin-top:5px; font-size:12px;">📁 ${catName}</div>`;
+                foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">📁 ${catName}</div>`;
                 for (const [name, qty] of Object.entries(items)) {
                     let qtyStr = (qty % 1 !== 0) ? Number(qty).toFixed(2) : qty;
-                    foodHtml += `<div style="display:flex; justify-content:space-between; border-bottom:1px dashed #eee; padding:2px 0; margin-left:20px;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
+                    foodHtml += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
                 }
             }
+            foodHtml += `</div>`;
         }
         if (document.getElementById("sr-items-summary")) document.getElementById("sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
 
