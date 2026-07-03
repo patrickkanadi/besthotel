@@ -313,49 +313,54 @@
     </div>
      
     <div id="shift-report-modal" class="modal-overlay hidden">
-        <div class="modal-content modal-large" style="max-width: 900px;">
-            <div style="text-align: center; margin-bottom: 10px;"><h2 style="margin:0; color: #2c3e50;">📊 Laporan Akhir Shift</h2></div>
+        <div class="modal-content modal-large" style="max-width: 1100px; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 10px;">
+                <h2 style="margin:0; color: #2c3e50;">📊 Laporan Akhir Shift</h2>
+            </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                <div>
-                    <div class="revenue-breakdown">
-                        <div class="revenue-section-title">📊 Ringkasan Penjualan (Omset)</div>
-                        <div class="revenue-row"><span>Omset Laundry</span> <strong id="sr-omset-laundry">Rp 0</strong></div>
-                        <div class="revenue-row"><span>Omset Hotel</span> <strong id="sr-omset-hotel">Rp 0</strong></div>
-                        <div class="revenue-row" style="color:#e74c3c;"><span>Total Diskon Keluar</span> <strong id="sr-discounts">-Rp 0</strong></div>
+            <div style="display: grid; grid-template-columns: 350px 1fr; gap: 20px; align-items: start;">
+                
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <div class="revenue-breakdown" style="padding: 10px; margin-bottom: 0;">
+                        <div class="revenue-section-title" style="margin-bottom: 5px; font-size: 13px;">📊 Omset & Transaksi (<span id="sr-orders">0</span> Nota)</div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Omset Laundry</span> <strong id="sr-omset-laundry">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Omset Hotel</span> <strong id="sr-omset-hotel">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px; color:#e74c3c;"><span>Diskon Keluar</span> <strong id="sr-discounts">-Rp 0</strong></div>
                     </div>
 
-                    <div class="revenue-breakdown">
-                        <div class="revenue-section-title">💵 Penerimaan Masuk</div>
-                        <div class="revenue-row"><span style="color:#2980b9;">Tunai (Laundry)</span> <strong id="sr-cash-laundry">Rp 0</strong></div>
-                        <div class="revenue-row"><span style="color:#e67e22;">Tunai (Hotel)</span> <strong id="sr-cash-hotel">Rp 0</strong></div>
-                        <div class="revenue-row"><span>QRIS (Laundry)</span> <strong id="sr-qris-laundry">Rp 0</strong></div>
-                        <div class="revenue-row"><span>Transfer (Hotel)</span> <strong id="sr-transfer-hotel">Rp 0</strong></div>
+                    <div class="revenue-breakdown" style="padding: 10px; margin-bottom: 0;">
+                        <div class="revenue-section-title" style="margin-bottom: 5px; font-size: 13px;">💵 Penerimaan Masuk</div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#2980b9;">Tunai (Laundry)</span> <strong id="sr-cash-laundry">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#e67e22;">Tunai (Hotel)</span> <strong id="sr-cash-hotel">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>QRIS (Laundry)</span> <strong id="sr-qris-laundry">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Transfer (Hotel)</span> <strong id="sr-transfer-hotel">Rp 0</strong></div>
                     </div>
 
-                    <div class="revenue-breakdown">
-                        <div class="revenue-section-title">⚠️ Pengeluaran Laci</div>
-                        <div class="revenue-row"><span style="color:#2980b9;">Pengeluaran Laundry</span> <strong id="sr-exp-laundry" style="color:#c0392b;">Rp 0</strong></div>
-                        <div class="revenue-row"><span style="color:#e67e22;">Pengeluaran Hotel</span> <strong id="sr-exp-hotel" style="color:#c0392b;">Rp 0</strong></div>
+                    <div class="revenue-breakdown" style="padding: 10px; margin-bottom: 0;">
+                        <div class="revenue-section-title" style="margin-bottom: 5px; font-size: 13px;">⚠️ Pengeluaran Laci</div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#2980b9;">Pengeluaran Laundry</span> <strong id="sr-exp-laundry" style="color:#c0392b;">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#e67e22;">Pengeluaran Hotel</span> <strong id="sr-exp-hotel" style="color:#c0392b;">Rp 0</strong></div>
                     </div>
                     
-                    <div style="background: #e8f4f8; border: 1px solid #bce8f1; padding: 15px; border-radius: 8px; text-align: center; margin-bottom: 10px;">
-                        <div style="font-size: 12px; font-weight: bold; color: #2980b9; text-transform: uppercase;">Sisa Tunai Aktual: Laci Laundry</div>
-                        <div id="sr-net-laundry" style="font-size: 24px; font-weight: bold; color: #2980b9; margin-top: 5px;">Rp 0</div>
-                    </div>
-                    <div style="background: #fdf2e9; border: 1px solid #fae5d3; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 12px; font-weight: bold; color: #e67e22; text-transform: uppercase;">Sisa Tunai Aktual: Laci Hotel</div>
-                        <div id="sr-net-hotel" style="font-size: 24px; font-weight: bold; color: #e67e22; margin-top: 5px;">Rp 0</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div style="background: #e8f4f8; border: 1px solid #bce8f1; padding: 10px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 10px; font-weight: bold; color: #2980b9; text-transform: uppercase;">Sisa Tunai Laundry</div>
+                            <div id="sr-net-laundry" style="font-size: 16px; font-weight: bold; color: #2980b9; margin-top: 4px;">Rp 0</div>
+                        </div>
+                        <div style="background: #fdf2e9; border: 1px solid #fae5d3; padding: 10px; border-radius: 8px; text-align: center;">
+                            <div style="font-size: 10px; font-weight: bold; color: #e67e22; text-transform: uppercase;">Sisa Tunai Hotel</div>
+                            <div id="sr-net-hotel" style="font-size: 16px; font-weight: bold; color: #e67e22; margin-top: 4px;">Rp 0</div>
+                        </div>
                     </div>
                 </div>
 
-                <div style="display:flex; flex-direction:column; background:#fff; border:1px solid #ddd; border-radius:8px; padding:15px; max-height:600px; overflow-y:auto;">
-                    <h3 style="margin-top:0; color:#2c3e50;">🍔 Rincian Item Terjual</h3>
-                    <div id="sr-items-summary" style="font-size: 14px;"></div>
+                <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:15px; height: 100%;">
+                    <h3 style="margin:0 0 10px 0; color:#2c3e50; font-size: 14px;">🍔 Rincian Item Terjual</h3>
+                    <div id="sr-items-summary" style="column-count: 3; column-gap: 20px; font-size: 11px;"></div>
                 </div>
             </div>
 
-            <div style="display:flex; gap:10px; margin-top:20px;">
+            <div style="display:flex; gap:10px; margin-top:15px;">
                 <button onclick="document.getElementById('shift-report-modal').classList.add('hidden')" style="flex:1; padding:12px; border:none; border-radius:8px; font-weight:bold; background:#f1f5f7; color:#2c3e50; cursor:pointer; font-size:14px;">Tutup</button>
                 <button onclick="printCurrentShiftReport()" style="flex:1.2; padding:12px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">🖨️ Cetak Laporan</button>
                 <button onclick="triggerEndShift()" style="flex:1.5; padding:12px; background:#c0392b; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">Akhiri Shift & Simpan Laporan</button>
