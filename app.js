@@ -157,6 +157,28 @@ window.buildShiftReportReceipt = async function(data) {
     const encoder = new TextEncoder(); await sendToPrinter(encoder.encode(r));
 };
 
+window.printGlobalReceipt = async function(title, contentStr, totalStr, footerStr) {
+    if (!btCharacteristic) return alert("⚠️ Printer belum terhubung!");
+    const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00";
+    const CMD_BOLD_ON = "\x1B\x45\x01"; const CMD_BOLD_OFF = "\x1B\x45\x00";
+    const CMD_BIG = "\x1B!\x11"; const CMD_NORMAL = "\x1B!\x00"; const CMD_CUT = "\x1D\x56\x41\x10";
+
+    let r = CMD_INIT + CMD_CENTER + CMD_BOLD_ON + CMD_BIG + "HOTEL POS\n" + CMD_NORMAL + CMD_BOLD_OFF;
+    r += CMD_CENTER + title + "\n";
+    r += "--------------------------------\n" + CMD_LEFT;
+    r += contentStr + "\n";
+    r += "--------------------------------\n";
+    if (totalStr) {
+        r += CMD_BOLD_ON + totalStr + "\n" + CMD_BOLD_OFF + "--------------------------------\n";
+    }
+    r += CMD_CENTER + footerStr + "\n\n\n\n" + CMD_CUT;
+    
+    try {
+        const encoder = new TextEncoder();
+        await sendToPrinter(encoder.encode(r));
+    } catch(e) { alert("Gagal mencetak: " + e); }
+};
+
 window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, payMethod) {
     const h1 = "HOTEL POS"; 
     const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00";
@@ -184,6 +206,111 @@ window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, p
     receipt += "\n\n\n\n" + CMD_CUT;
 
     const encoder = new TextEncoder(); await sendToPrinter(encoder.encode(receipt));
+};
+
+window.viewOrderDetailsGlobal = function(orderId) {
+    let o = window.globalRecentOrders.find(x => x.orderId === orderId);
+    if(!o) return;
+    document.getElementById("detail-id").innerText = o.orderId;
+    document.getElementById("detail-time").innerText = formatWIB(o.timestamp);
+    document.getElementById("detail-cashier").innerText = o.cashier;
+    document.getElementById("detail-items").innerText = o.readableReceipt;
+    
+    document.getElementById("detail-subtotal").innerText = "Rp " + o.subtotal.toLocaleString('id-ID');
+    document.getElementById("detail-discount").innerText = "-Rp " + o.discounts.toLocaleString('id-ID');
+    document.getElementById("detail-grandtotal").innerText = "Rp " + o.grandTotal.toLocaleString('id-ID');
+    
+    document.getElementById("detail-cash-l").innerText = "Rp " + o.cashLaundryAmount.toLocaleString('id-ID');
+    document.getElementById("detail-cash-h").innerText = "Rp " + o.cashHotelAmount.toLocaleString('id-ID');
+    document.getElementById("detail-qris").innerText = "Rp " + o.qrisAmount.toLocaleString('id-ID');
+    document.getElementById("detail-transfer").innerText = "Rp " + o.transferAmount.toLocaleString('id-ID');
+    
+    document.getElementById("btn-print-order-detail").onclick = () => window.printOrderGlobal(o.orderId);
+    document.getElementById("order-detail-modal").classList.remove("hidden");
+};
+
+window.printOrderGlobal = function(orderId) {
+    let o = window.globalRecentOrders.find(x => x.orderId === orderId);
+    if(!o) return;
+    let content = `Nota: ${o.orderId}\nKamar: ${o.roomNumber}\nKasir: ${o.cashier}\nWaktu: ${formatWIB(o.timestamp)}\n--------------------------------\n`;
+    content += o.readableReceipt;
+    
+    let total = `Subtotal: Rp ${o.subtotal.toLocaleString('id-ID')}\n`;
+    if(o.discounts > 0) total += `Diskon: -Rp ${o.discounts.toLocaleString('id-ID')}\n`;
+    total += `TOTAL: Rp ${o.grandTotal.toLocaleString('id-ID')}\n`;
+    total += `\n[Pembayaran]\nCash Lndry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}\nCash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}\nQRIS Lndry: Rp ${o.qrisAmount.toLocaleString('id-ID')}\nTrf Hotel : Rp ${o.transferAmount.toLocaleString('id-ID')}`;
+    
+    window.printGlobalReceipt("SALINAN NOTA", content, total, "TERIMA KASIH");
+};
+
+window.viewExpenseDetailsGlobal = function(expId) {
+    let e = window.globalRecentExpenses.find(x => x.expenseId === expId);
+    if(!e) return;
+    document.getElementById("exp-det-id").innerText = e.expenseId;
+    document.getElementById("exp-det-time").innerText = formatWIB(e.timestamp);
+    document.getElementById("exp-det-cashier").innerText = e.cashier;
+    document.getElementById("exp-det-drawer").innerText = e.drawer;
+    document.getElementById("exp-det-cat").innerText = e.category;
+    document.getElementById("exp-det-desc").innerText = e.description;
+    document.getElementById("exp-det-amount").innerText = "Rp " + e.amount.toLocaleString('id-ID');
+    
+    document.getElementById("btn-print-exp-detail").onclick = () => window.printExpenseGlobal(e.expenseId);
+    document.getElementById("expense-detail-modal").classList.remove("hidden");
+};
+
+window.printExpenseGlobal = function(expId) {
+    let e = window.globalRecentExpenses.find(x => x.expenseId === expId);
+    if(!e) return;
+    let content = `ID: ${e.expenseId}\nKasir: ${e.cashier}\nWaktu: ${formatWIB(e.timestamp)}\nLaci: ${e.drawer}\nKategori: ${e.category}\nKet: ${e.description}`;
+    let total = `TOTAL KELUAR: Rp ${e.amount.toLocaleString('id-ID')}`;
+    window.printGlobalReceipt("BUKTI PENGELUARAN", content, total, "SIMPAN SEBAGAI BUKTI");
+};
+
+window.viewShiftDetailsGlobal = function(shiftId) {
+    let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
+    if(!s) return;
+    
+    window.currentShiftData = s;
+    document.getElementById("sr-orders").innerText = s.totalOrders;
+    document.getElementById("sr-omset-laundry").innerText = "Rp " + (s.omsetLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-omset-hotel").innerText = "Rp " + (s.omsetHotel||0).toLocaleString('id-ID');
+    document.getElementById("sr-discounts").innerText = "-Rp " + (s.totalFree||0).toLocaleString('id-ID');
+    document.getElementById("sr-cash-laundry").innerText = "Rp " + (s.cashLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-cash-hotel").innerText = "Rp " + (s.cashHotel||0).toLocaleString('id-ID');
+    document.getElementById("sr-qris-laundry").innerText = "Rp " + (s.qrisLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-transfer-hotel").innerText = "Rp " + (s.transferHotel||0).toLocaleString('id-ID');
+    document.getElementById("sr-exp-laundry").innerText = "Rp " + (s.expLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-exp-hotel").innerText = "Rp " + (s.expHotel||0).toLocaleString('id-ID');
+    document.getElementById("sr-net-laundry").innerText = "Rp " + (s.netLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-net-hotel").innerText = "Rp " + (s.netHotel||0).toLocaleString('id-ID');
+
+    let foodHtml = "";
+    for (const [locName, categories] of Object.entries(s.foodSummary || {})) {
+        foodHtml += `<div style="break-inside: avoid; margin-bottom: 12px; background: #f9f9f9; padding: 6px; border-radius: 6px; border: 1px solid #eee;">`;
+        foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px;">📍 ${locName}</div>`;
+        for (const [catName, items] of Object.entries(categories)) {
+            foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">📁 ${catName}</div>`;
+            for (const [name, qty] of Object.entries(items)) {
+                let qtyStr = (qty % 1 !== 0) ? Number(qty).toFixed(2) : qty;
+                foodHtml += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
+            }
+        }
+        foodHtml += `</div>`;
+    }
+    document.getElementById("sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
+    
+    // Hide End Shift button if viewing history
+    const endBtn = document.getElementById("btn-end-shift");
+    if(endBtn) endBtn.classList.add("hidden");
+
+    document.getElementById("shift-report-modal").classList.remove("hidden");
+};
+
+window.printShiftGlobal = async function(shiftId) {
+    let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
+    if(!s) return;
+    if (!btCharacteristic) return alert("⚠️ Printer belum terhubung!");
+    await window.buildShiftReportReceipt(s);
 };
 
 // 3. CORE LOGIN FAST SYNC
@@ -730,7 +857,12 @@ window.renderHistoryList = function(type) {
         
         ordersToDisplay.forEach(o => {
             let badge = o.orderStatus === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : `<span class="status-badge status-paid">${o.orderStatus}</span>`;
-            container.innerHTML += `<div class="history-row"><div><strong>${o.roomNumber}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(o.timestamp)} | Rp ${o.grandTotal.toLocaleString('id-ID')} | Kasir: ${o.cashier}</small></div><div style="display:flex; align-items:center; gap:8px;">${badge}</div></div>`;
+            container.innerHTML += `<div class="history-row">
+                <div><strong>Kamar: ${o.roomNumber}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(o.timestamp)} | Rp ${o.grandTotal.toLocaleString('id-ID')} | Kasir: ${o.cashier}</small></div>
+                <div style="display:flex; align-items:center; gap:8px;">${badge}
+                    <button onclick="viewOrderDetailsGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">👁️ Detail</button>
+                    <button onclick="printOrderGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
+                </div></div>`;
         });
         
     } else if (type === 'expenses') {
@@ -739,7 +871,12 @@ window.renderHistoryList = function(type) {
         
         expensesToDisplay.forEach(exp => {
             let badge = exp.status === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : `<span class="status-badge status-paid">Aktif</span>`;
-            container.innerHTML += `<div class="history-row"><div><strong>[${exp.drawer}] ${exp.category}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(exp.timestamp)} | Rp ${exp.amount.toLocaleString('id-ID')} | Kasir: ${exp.cashier}</small><br><small>${exp.description}</small></div><div style="display:flex; align-items:center; gap:10px;">${badge}</div></div>`;
+            container.innerHTML += `<div class="history-row">
+                <div><strong>[${exp.drawer}] ${exp.category}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(exp.timestamp)} | Rp ${exp.amount.toLocaleString('id-ID')} | Kasir: ${exp.cashier}</small><br><small>${exp.description}</small></div>
+                <div style="display:flex; align-items:center; gap:10px;">${badge}
+                    <button onclick="viewExpenseDetailsGlobal('${exp.expenseId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">👁️ Detail</button>
+                    <button onclick="printExpenseGlobal('${exp.expenseId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
+                </div></div>`;
         });
         
     } else if (type === 'shifts') {
@@ -750,7 +887,13 @@ window.renderHistoryList = function(type) {
         }
         
         shiftsToDisplay.slice(0, 20).forEach(s => {
-            container.innerHTML += `<div class="history-row" style="align-items:flex-start;"><div><strong>Shift: ${s.shiftId}</strong><br><small style="color:#7f8c8d;">Kasir: ${s.cashier} | Keluar: ${formatWIB(s.logoutTime)}</small></div><div style="display:flex; text-align:right; align-items:center;"><div><strong style="margin-right:15px;">Omset: Rp ${(s.totalOmset || 0).toLocaleString('id-ID')}</strong></div></div></div>`;
+            container.innerHTML += `<div class="history-row" style="align-items:flex-start;">
+                <div><strong>Shift: ${s.shiftId}</strong><br><small style="color:#7f8c8d;">Kasir: ${s.cashier} | Keluar: ${formatWIB(s.logoutTime)}</small></div>
+                <div style="display:flex; text-align:right; align-items:center;">
+                    <div><strong style="margin-right:15px;">Omset: Rp ${(s.totalOmset || 0).toLocaleString('id-ID')}</strong></div>
+                    <button onclick="viewShiftDetailsGlobal('${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff; margin-right:5px;">👁️ Detail</button>
+                    <button onclick="printShiftGlobal('${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
+                </div></div>`;
         });
     }
 };
@@ -851,6 +994,47 @@ window.runBackgroundSync = async function() {
     } finally { isSyncing = false; }
 };
 
+window.printCurrentShiftReport = async function() {
+    const data = window.currentShiftData;
+    if (!data) return alert("Data ringkasan shift tidak tersedia untuk dicetak.");
+    if (!btCharacteristic) {
+        alert("⚠️ Printer belum terhubung. Silakan nyalakan bluetooth dan klik tombol 'Printer: Offline' di menu atas.");
+        return;
+    }
+    try {
+        await window.buildShiftReportReceipt(data);
+        alert("Laporan penutupan shift berhasil dikirim ke printer!");
+    } catch (e) { 
+        alert("Gagal mencetak laporan: " + e.toString()); 
+    }
+};
+
+window.triggerEndShift = async function() {
+    const data = window.currentShiftData; if (!data) return alert("Gagal mengambil data shift kasir.");
+    if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
+    
+    // PRINTER FAIL-SAFE CHECK
+    if (!btCharacteristic) {
+        alert("⚠️ Printer belum terhubung! Shift akan tetap ditutup dan direkam ke sistem secara otomatis.");
+    } else {
+        try {
+            await window.buildShiftReportReceipt(data);
+        } catch (e) {
+            alert("⚠️ Gagal mencetak laporan (" + e.toString() + "). Shift akan tetap ditutup dan direkam ke sistem.");
+        }
+    }
+    
+    let tx = db.transaction(["local_shift_history", "shift_reports", "active_shifts"], "readwrite");
+    tx.objectStore("local_shift_history").add(data); tx.objectStore("shift_reports").add(data);
+    tx.objectStore("active_shifts").delete(currentPin);
+    
+    tx.oncomplete = async () => {
+        document.getElementById("shift-report-modal").classList.add("hidden");
+        alert("Shift Berhasil Ditutup! Memproses sinkronisasi cloud akhir...");
+        await window.runBackgroundSync(); window.location.reload(); 
+    };
+};
+
 window.openShiftReport = function() {
     if (!db || !currentShiftId) return alert("Anda belum membuka shift kasir.");
     let tx = db.transaction(["orders", "expenses"], "readonly");
@@ -923,11 +1107,8 @@ window.openShiftReport = function() {
         if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + netL.toLocaleString('id-ID');
         if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + netH.toLocaleString('id-ID');
 
-        // ... (inside window.openShiftReport, replace the foodHtml loop) ...
-        
         let foodHtml = "";
         for (const [locName, categories] of Object.entries(foodSummary)) {
-            // "break-inside: avoid" prevents the 3-columns from splitting a category halfway
             foodHtml += `<div style="break-inside: avoid; margin-bottom: 12px; background: #f9f9f9; padding: 6px; border-radius: 6px; border: 1px solid #eee;">`;
             foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px;">📍 ${locName}</div>`;
             for (const [catName, items] of Object.entries(categories)) {
@@ -941,35 +1122,11 @@ window.openShiftReport = function() {
         }
         if (document.getElementById("sr-items-summary")) document.getElementById("sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
 
+        // Make sure the End Shift button is ALWAYS visible here
+        const endBtn = document.getElementById("btn-end-shift");
+        if(endBtn) endBtn.classList.remove("hidden");
+
         document.getElementById("shift-report-modal").classList.remove("hidden");
-    };
-};
-
-window.printCurrentShiftReport = async function() {
-    const data = window.currentShiftData;
-    if (!data) return alert("Data ringkasan shift tidak tersedia untuk dicetak.");
-    try {
-        if (typeof window.buildShiftReportReceipt === "function") {
-            await window.buildShiftReportReceipt(data);
-            alert("Laporan penutupan shift berhasil dikirim ke printer!");
-        } else {
-            alert("⚠️ Modul printer belum terhubung. Silakan nyalakan bluetooth dan klik Printer di menu atas.");
-        }
-    } catch (e) { alert("Gagal mencetak laporan: " + e.toString()); }
-};
-
-window.triggerEndShift = async function() {
-    const data = window.currentShiftData; if (!data) return alert("Gagal mengambil data shift kasir.");
-    if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
-    
-    let tx = db.transaction(["local_shift_history", "shift_reports", "active_shifts"], "readwrite");
-    tx.objectStore("local_shift_history").add(data); tx.objectStore("shift_reports").add(data);
-    tx.objectStore("active_shifts").delete(currentPin);
-    
-    tx.oncomplete = async () => {
-        document.getElementById("shift-report-modal").classList.add("hidden");
-        alert("Shift Berhasil Ditutup! Memproses sinkronisasi cloud akhir...");
-        await window.runBackgroundSync(); window.location.reload(); 
     };
 };
 
