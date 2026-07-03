@@ -845,6 +845,34 @@ window.saveExpense = function() {
     alert("Pengeluaran Berhasil Dicatat!"); window.runBackgroundSync();
 };
 
+window.requestVoid = function(type, id) {
+    currentVoidTarget = { type: type, id: id };
+    document.getElementById("void-auth-modal").classList.remove("hidden");
+};
+
+window.submitVoidRequest = function() {
+    let payload = { id: currentVoidTarget.id, type: currentVoidTarget.type, status: "Void Pending", syncStatus: "Pending" };
+    db.transaction(["void_requests"], "readwrite").objectStore("void_requests").add(payload);
+    
+    document.getElementById("void-auth-modal").classList.add("hidden");
+    alert("Permintaan pembatalan dikirim ke server. Menunggu persetujuan Admin.");
+    window.runBackgroundSync();
+    
+    // Optimistic local UI update
+    if(currentVoidTarget.type === 'orders') { let o = window.globalRecentOrders.find(x => x.orderId === currentVoidTarget.id); if(o) o.orderStatus = "Void Pending"; window.renderHistoryList('orders'); }
+    if(currentVoidTarget.type === 'expenses') { let e = window.globalRecentExpenses.find(x => x.expenseId === currentVoidTarget.id); if(e) e.status = "Void Pending"; window.renderHistoryList('expenses'); }
+    if(currentVoidTarget.type === 'shifts') { let s = window.globalRecentShifts.find(x => x.shiftId === currentVoidTarget.id); if(s) s.status = "Void Pending"; window.renderHistoryList('shifts'); }
+};
+
+// IMPORTANT: Add this loop to the END of your runBackgroundSync() function:
+        let voids = await new Promise(res => db.transaction(["void_requests"], "readonly").objectStore("void_requests").getAll().onsuccess = e => res(e.target.result));
+        for (const req of voids) {
+            try {
+                let r = await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "requestVoid", data: req }) });
+                db.transaction(["void_requests"], "readwrite").objectStore("void_requests").delete(req.id);
+            } catch(e) {}
+        }
+
 window.openHistoryModal = function() { document.getElementById("history-modal").classList.remove("hidden"); window.renderHistoryList('orders'); };
 window.renderHistoryList = function(type) {
     const container = document.getElementById("history-container"); 
@@ -856,10 +884,13 @@ window.renderHistoryList = function(type) {
         if(ordersToDisplay.length === 0) return container.innerHTML = `<div style="padding:20px; text-align:center;">Belum ada histori order di server.</div>`;
         
         ordersToDisplay.forEach(o => {
-            let badge = o.orderStatus === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : `<span class="status-badge status-paid">${o.orderStatus}</span>`;
+            let badge = o.orderStatus === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : o.orderStatus === "Void Pending" ? `<span class="status-badge status-pending">Menunggu Admin</span>` : `<span class="status-badge status-paid">${o.orderStatus}</span>`;
+            let btnBatal = (o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending") ? `<button onclick="requestVoid('orders', '${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #e74c3c; background:#f8d7da; color:#721c24;">❌ Batal</button>` : '';
+
             container.innerHTML += `<div class="history-row">
                 <div><strong>Kamar: ${o.roomNumber}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(o.timestamp)} | Rp ${o.grandTotal.toLocaleString('id-ID')} | Kasir: ${o.cashier}</small></div>
                 <div style="display:flex; align-items:center; gap:8px;">${badge}
+                    ${btnBatal}
                     <button onclick="viewOrderDetailsGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">👁️ Detail</button>
                     <button onclick="printOrderGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
                 </div></div>`;
@@ -870,10 +901,13 @@ window.renderHistoryList = function(type) {
         if(expensesToDisplay.length === 0) return container.innerHTML = `<div style="padding:20px; text-align:center;">Belum ada pengeluaran dicatat di server.</div>`;
         
         expensesToDisplay.forEach(exp => {
-            let badge = exp.status === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : `<span class="status-badge status-paid">Aktif</span>`;
+            let badge = exp.status === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : exp.status === "Void Pending" ? `<span class="status-badge status-pending">Menunggu Admin</span>` : `<span class="status-badge status-paid">Aktif</span>`;
+            let btnBatal = (exp.status !== "Voided" && exp.status !== "Void Pending") ? `<button onclick="requestVoid('expenses', '${exp.expenseId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #e74c3c; background:#f8d7da; color:#721c24;">❌ Batal</button>` : '';
+
             container.innerHTML += `<div class="history-row">
                 <div><strong>[${exp.drawer}] ${exp.category}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(exp.timestamp)} | Rp ${exp.amount.toLocaleString('id-ID')} | Kasir: ${exp.cashier}</small><br><small>${exp.description}</small></div>
                 <div style="display:flex; align-items:center; gap:10px;">${badge}
+                    ${btnBatal}
                     <button onclick="viewExpenseDetailsGlobal('${exp.expenseId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">👁️ Detail</button>
                     <button onclick="printExpenseGlobal('${exp.expenseId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
                 </div></div>`;
@@ -881,16 +915,17 @@ window.renderHistoryList = function(type) {
         
     } else if (type === 'shifts') {
         const shiftsToDisplay = window.globalRecentShifts || [];
-        if(shiftsToDisplay.length === 0) { 
-            container.innerHTML = `<div style="padding:20px; text-align:center;">Belum ada histori shift di sistem server.</div>`; 
-            return; 
-        }
+        if(shiftsToDisplay.length === 0) { return container.innerHTML = `<div style="padding:20px; text-align:center;">Belum ada histori shift di sistem server.</div>`; }
         
         shiftsToDisplay.slice(0, 20).forEach(s => {
+            let badge = s.status === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : s.status === "Void Pending" ? `<span class="status-badge status-pending">Menunggu Admin</span>` : ``;
+            let btnBatal = (s.status !== "Voided" && s.status !== "Void Pending") ? `<button onclick="requestVoid('shifts', '${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #e74c3c; background:#f8d7da; color:#721c24; margin-right:5px;">❌ Batal</button>` : '';
+
             container.innerHTML += `<div class="history-row" style="align-items:flex-start;">
-                <div><strong>Shift: ${s.shiftId}</strong><br><small style="color:#7f8c8d;">Kasir: ${s.cashier} | Keluar: ${formatWIB(s.logoutTime)}</small></div>
+                <div><strong>Shift: ${s.shiftId}</strong><br><small style="color:#7f8c8d;">Kasir: ${s.cashier} | Keluar: ${formatWIB(s.logoutTime)}</small><br>${badge}</div>
                 <div style="display:flex; text-align:right; align-items:center;">
                     <div><strong style="margin-right:15px;">Omset: Rp ${(s.totalOmset || 0).toLocaleString('id-ID')}</strong></div>
+                    ${btnBatal}
                     <button onclick="viewShiftDetailsGlobal('${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff; margin-right:5px;">👁️ Detail</button>
                     <button onclick="printShiftGlobal('${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
                 </div></div>`;
@@ -1004,25 +1039,12 @@ window.printCurrentShiftReport = async function() {
     try {
         await window.buildShiftReportReceipt(data);
         alert("Laporan penutupan shift berhasil dikirim ke printer!");
-    } catch (e) { 
-        alert("Gagal mencetak laporan: " + e.toString()); 
-    }
+    } catch (e) { alert("Gagal mencetak laporan: " + e.toString()); }
 };
 
 window.triggerEndShift = async function() {
     const data = window.currentShiftData; if (!data) return alert("Gagal mengambil data shift kasir.");
     if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
-    
-    // PRINTER FAIL-SAFE CHECK
-    if (!btCharacteristic) {
-        alert("⚠️ Printer belum terhubung! Shift akan tetap ditutup dan direkam ke sistem secara otomatis.");
-    } else {
-        try {
-            await window.buildShiftReportReceipt(data);
-        } catch (e) {
-            alert("⚠️ Gagal mencetak laporan (" + e.toString() + "). Shift akan tetap ditutup dan direkam ke sistem.");
-        }
-    }
     
     let tx = db.transaction(["local_shift_history", "shift_reports", "active_shifts"], "readwrite");
     tx.objectStore("local_shift_history").add(data); tx.objectStore("shift_reports").add(data);
@@ -1030,7 +1052,17 @@ window.triggerEndShift = async function() {
     
     tx.oncomplete = async () => {
         document.getElementById("shift-report-modal").classList.add("hidden");
-        alert("Shift Berhasil Ditutup! Memproses sinkronisasi cloud akhir...");
+        
+        if (!btCharacteristic) {
+            alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
+        } else {
+            try {
+                await window.buildShiftReportReceipt(data);
+            } catch (e) {
+                alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
+            }
+        }
+        
         await window.runBackgroundSync(); window.location.reload(); 
     };
 };
