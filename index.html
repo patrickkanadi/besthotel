@@ -316,6 +316,48 @@
             </div>
         </div>
     </div>
+
+    <div id="order-detail-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 style="margin-top:0;">🧾 Detail Transaksi</h2>
+            <div style="font-size:12px; color:#7f8c8d; margin-bottom:10px;">ID: <span id="detail-id"></span> | Kasir: <span id="detail-cashier"></span><br>Waktu: <span id="detail-time"></span></div>
+            <div id="detail-items" style="background:#f9f9f9; padding:15px; border-radius:8px; border:1px solid #eee; margin-bottom:15px; max-height:250px; overflow-y:auto; white-space:pre-wrap; font-family: monospace; font-size: 14px;"></div>
+            <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:5px;"><span>Subtotal:</span> <span id="detail-subtotal">Rp 0</span></div>
+            <div style="display:flex; justify-content:space-between; font-size:14px; color:#e74c3c; margin-bottom:5px;"><span>Diskon Keluar:</span> <span id="detail-discount">-Rp 0</span></div>
+            <div style="display:flex; justify-content:space-between; font-size:20px; font-weight:bold; color:#2c3e50; border-top:2px dashed #ccc; padding-top:10px; margin-bottom:15px;"><span>Total Akhir:</span> <span id="detail-grandtotal">Rp 0</span></div>
+            
+            <div style="background:#e8f4f8; padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px;">
+                <div style="font-weight:bold; color:#2980b9; margin-bottom:5px;">Rincian Pembayaran:</div>
+                <div style="display:flex; justify-content:space-between;"><span>Cash (Laundry):</span> <span id="detail-cash-l">Rp 0</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>Cash (Hotel):</span> <span id="detail-cash-h">Rp 0</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>QRIS (Laundry):</span> <span id="detail-qris">Rp 0</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>Transfer (Hotel):</span> <span id="detail-transfer">Rp 0</span></div>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('order-detail-modal').classList.add('hidden')" style="flex:1; padding:12px; background:#bdc3c7; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Tutup</button>
+                <button id="btn-print-order-detail" style="flex:1; padding:12px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">🖨️ Cetak Ulang</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="expense-detail-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 style="margin-top:0;">💸 Detail Pengeluaran</h2>
+            <div style="font-size:12px; color:#7f8c8d; margin-bottom:15px;">ID: <span id="exp-det-id"></span> | Waktu: <span id="exp-det-time"></span></div>
+            <div style="background:#f9f9f9; padding:15px; border-radius:8px; border:1px solid #eee; margin-bottom:15px; font-size:14px;">
+                <div style="margin-bottom:5px;"><strong>Kasir:</strong> <span id="exp-det-cashier"></span></div>
+                <div style="margin-bottom:5px;"><strong>Sumber Laci:</strong> <span id="exp-det-drawer"></span></div>
+                <div style="margin-bottom:5px;"><strong>Kategori:</strong> <span id="exp-det-cat"></span></div>
+                <div style="margin-bottom:5px;"><strong>Keterangan:</strong> <span id="exp-det-desc"></span></div>
+                <div style="margin-top:10px; font-size:20px; font-weight:bold; color:#c0392b;">Total Keluar: <span id="exp-det-amount">Rp 0</span></div>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('expense-detail-modal').classList.add('hidden')" style="flex:1; padding:12px; background:#bdc3c7; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Tutup</button>
+                <button id="btn-print-exp-detail" style="flex:1; padding:12px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">🖨️ Cetak Bukti</button>
+            </div>
+        </div>
+    </div>
      
     <div id="shift-report-modal" class="modal-overlay hidden">
         <div class="modal-content modal-large" style="max-width: 1100px; padding: 20px;">
