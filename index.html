@@ -106,6 +106,8 @@
             <div style="margin-bottom: 20px; font-size: 14px; color: #7f8c8d; display: flex; flex-direction: column; align-items: center; gap: 10px; background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px solid #eee;">
                 <div style="display: flex; align-items: center; gap: 8px;"><span class="dot-online" id="login-network-dot" style="background-color: #f39c12;"></span> <strong id="login-network-text">Mengecek koneksi...</strong></div>
                 <button onclick="syncMasterData()" style="background: #3498db; color: white; padding: 8px 15px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%; font-weight: bold;">🔄 Sinkronisasi Paksa</button>
+                
+                <button id="btn-install-login" class="hidden" onclick="installPWA()" style="background: #8e44ad; color: white; padding: 8px 15px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%; font-weight: bold;">📲 Install App ke HP/Tablet</button>
             </div>
             <p>Masukkan PIN Kasir</p>
             <input type="password" id="cashier-pin" placeholder="****" inputmode="numeric">
@@ -118,6 +120,9 @@
             <div><strong>Kasir:</strong> <span id="display-cashier">---</span></div>
             <div class="status-indicator">
                 <span class="dot-online" id="network-dot"></span><span id="network-text" style="margin-right: 10px;">Memuat...</span>
+                
+                <button class="btn-top hidden" id="btn-install" style="background:#2980b9; border-color:#2980b9;" onclick="installPWA()">📲 Install App</button>
+                
                 <button class="btn-top" id="btn-printer" style="background:#bdc3c7; border-color:#bdc3c7;" onclick="connectBluetoothPrinter()">🖨️ Printer: Offline</button>
                 <button class="btn-top" style="background:#34495e; border-color:#34495e;" onclick="manualPushSync()">🔄 Sinkron</button>
                 <button class="btn-top" id="btn-drawer" style="background:#16a085; border-color:#16a085;" onclick="openCashDrop(false)">🏦 Laci Uang</button>
