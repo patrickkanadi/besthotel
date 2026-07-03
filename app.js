@@ -41,6 +41,7 @@ function initDB() {
             if (!db.objectStoreNames.contains("shift_reports")) db.createObjectStore("shift_reports", { keyPath: "shiftId" }); 
             if (!db.objectStoreNames.contains("expenses")) db.createObjectStore("expenses", { keyPath: "expenseId" });
             if (!db.objectStoreNames.contains("expense_categories")) db.createObjectStore("expense_categories", { keyPath: "name" });
+            if (!db.objectStoreNames.contains("void_requests")) db.createObjectStore("void_requests", { keyPath: "id" });
             if (!db.objectStoreNames.contains("local_shift_history")) db.createObjectStore("local_shift_history", { keyPath: "shiftId" });
         };
         request.onsuccess = (e) => { db = e.target.result; resolve(db); };
@@ -544,7 +545,6 @@ function renderProductGrid() {
     grid.innerHTML = "";
     globalMenuData.filter(i => i.location === currentLocation && i.category === currentCategory).forEach(item => {
         
-        // Calculate remaining stock based on what is already inside the cart
         let cartItem = currentCart.find(i => i.itemId === item.itemId);
         let qtyInCart = cartItem ? cartItem.qty : 0;
         let stockRemaining = item.currentStock - qtyInCart;
@@ -553,7 +553,7 @@ function renderProductGrid() {
         
         const card = document.createElement("div"); 
         card.className = "product-card";
-        if (isOutOfStock) card.style.opacity = "0.5"; // Gray out the card
+        if (isOutOfStock) card.style.opacity = "0.5"; 
         
         let stockLabel = item.trackStock ? `<div style="font-size:11px; color:#e74c3c; font-weight:bold; margin-top:5px;">Sisa Stok: ${stockRemaining}</div>` : "";
 
@@ -584,13 +584,11 @@ window.addToCart = function(item, qty) {
     let finalQty = qty;
     const existing = currentCart.find(i => i.itemId === item.itemId);
     
-    // VALIDATE MOQ
     if (!existing && item.hasMoq && item.moqQty > 0 && finalQty < item.moqQty) { 
         alert(`⚠️ Minimum Order (MOQ) untuk ${item.name} adalah ${item.moqQty}.\nJumlah otomatis disesuaikan.`); 
         finalQty = item.moqQty; 
     }
     
-    // VALIDATE STOCK LIMITS FOR NUMPAD ENTRY
     if (item.trackStock && finalQty > item.currentStock) {
         alert(`⚠️ Stok tidak cukup! Sisa stok ${item.name} di sistem hanya: ${item.currentStock}`);
         return;
@@ -600,20 +598,18 @@ window.addToCart = function(item, qty) {
     else { currentCart.push({ ...item, qty: finalQty, originalPrice: item.price, workflow: item.workflow, trackStock: item.trackStock, currentStock: item.currentStock, hasMoq: item.hasMoq, moqQty: item.moqQty }); }
     
     window.renderCart();
-    renderProductGrid(); // Update the stock UI numbers instantly
+    renderProductGrid(); 
 };
 
 window.updateCartItemQty = function(itemId, delta) {
     let existing = currentCart.find(i => i.itemId === itemId);
     if (existing) {
-        // VALIDATE MAX STOCK 
         if (delta > 0 && existing.trackStock && (existing.qty + delta) > existing.currentStock) {
             return alert(`⚠️ Stok maksimal tercapai! Sisa stok di sistem hanya: ${existing.currentStock}`);
         }
 
         existing.qty += delta;
         
-        // VALIDATE MOQ (Removes entirely if drops below MOQ)
         if (existing.hasMoq && existing.moqQty > 0) { 
             if (existing.qty > 0 && existing.qty < existing.moqQty) { 
                 if (delta < 0) existing.qty = 0; 
@@ -624,7 +620,7 @@ window.updateCartItemQty = function(itemId, delta) {
         if (existing.qty <= 0) currentCart = currentCart.filter(i => i.itemId !== itemId);
         
         window.renderCart();
-        renderProductGrid(); // Update the stock UI numbers instantly
+        renderProductGrid(); 
     }
 };
 
@@ -633,7 +629,7 @@ window.clearCart = function() {
     if (confirm("Apakah Anda yakin ingin membatalkan order?")) { 
         currentCart = []; 
         window.renderCart(); 
-        renderProductGrid(); // Reset the stock UI numbers
+        renderProductGrid(); 
     }
 };
 
@@ -724,7 +720,7 @@ window.finalizeOrder = async function(shouldPrint) {
 
     let roomNumber = antreans[currentAntreanIndex].room || "Tamu Umum";
     
-    // SPK TRIGGER CHECK: Does this cart contain anything with a Workflow = TICKET?
+    // SPK TRIGGER CHECK
     let hasTicketItem = currentCart.some(i => i.workflow === "TICKET");
     let finalStatus = hasTicketItem ? "Processing" : "Completed";
 
@@ -736,7 +732,6 @@ window.finalizeOrder = async function(shouldPrint) {
 
     db.transaction(["orders"], "readwrite").objectStore("orders").add(orderPayload);
     
-    // Send to "Active Tickets" UI if needed
     if (finalStatus === "Processing") {
         activeLaundryTickets.push(orderPayload);
         let tc = document.getElementById("ticket-count"); if(tc) tc.innerText = activeLaundryTickets.length;
@@ -802,7 +797,6 @@ window.confirmSettlement = function() {
     if (!activeSettlementTicket) return;
     const c = Number(document.getElementById("settle-cash").value) || 0; const q = Number(document.getElementById("settle-qris").value) || 0; const t = Number(document.getElementById("settle-transfer").value) || 0;
     
-    // We assume leftover cash payments default to the general transaction sum logic when syncing to Sheets
     activeSettlementTicket.cashHotelAmount += c; activeSettlementTicket.qrisAmount += q; activeSettlementTicket.transferAmount += t;
     activeSettlementTicket.orderStatus = "Completed"; activeSettlementTicket.syncStatus = "Pending";
     
@@ -832,7 +826,6 @@ window.saveExpense = function() {
     const drawer = document.getElementById("exp-drawer").value;
     if (amount <= 0 || !category) return alert("Harap masukkan jumlah dan kategori yang benar.");
     
-    // Save to local IndexedDB to enable immediate autocomplete next time
     db.transaction(["expense_categories"], "readwrite").objectStore("expense_categories").put({ name: category });
 
     const payload = { expenseId: "EXP-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId, drawer: drawer, category: category, description: document.getElementById("exp-desc").value || "-", amount: amount, status: "Active", syncStatus: "Pending" };
@@ -858,20 +851,11 @@ window.submitVoidRequest = function() {
     alert("Permintaan pembatalan dikirim ke server. Menunggu persetujuan Admin.");
     window.runBackgroundSync();
     
-    // Optimistic local UI update
     if(currentVoidTarget.type === 'orders') { let o = window.globalRecentOrders.find(x => x.orderId === currentVoidTarget.id); if(o) o.orderStatus = "Void Pending"; window.renderHistoryList('orders'); }
     if(currentVoidTarget.type === 'expenses') { let e = window.globalRecentExpenses.find(x => x.expenseId === currentVoidTarget.id); if(e) e.status = "Void Pending"; window.renderHistoryList('expenses'); }
     if(currentVoidTarget.type === 'shifts') { let s = window.globalRecentShifts.find(x => x.shiftId === currentVoidTarget.id); if(s) s.status = "Void Pending"; window.renderHistoryList('shifts'); }
 };
 
-// IMPORTANT: Add this loop to the END of your runBackgroundSync() function:
-        let voids = await new Promise(res => db.transaction(["void_requests"], "readonly").objectStore("void_requests").getAll().onsuccess = e => res(e.target.result));
-        for (const req of voids) {
-            try {
-                let r = await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "requestVoid", data: req }) });
-                db.transaction(["void_requests"], "readwrite").objectStore("void_requests").delete(req.id);
-            } catch(e) {}
-        }
 
 window.openHistoryModal = function() { document.getElementById("history-modal").classList.remove("hidden"); window.renderHistoryList('orders'); };
 window.renderHistoryList = function(type) {
@@ -998,73 +982,48 @@ window.runBackgroundSync = async function() {
         for (const order of orders) {
             if (order.syncStatus === "Pending") {
                 try {
-                    let r = await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "syncOrder", data: order }) });
+                    let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncOrder", data: order }) });
                     order.syncStatus = "Synced"; db.transaction(["orders"], "readwrite").objectStore("orders").put(order); 
                 } catch(e) {}
             }
         }
+
         let expenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
         for (const exp of expenses) {
             if (exp.syncStatus === "Pending") {
                 try {
-                    let r = await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "syncExpense", data: exp }) });
+                    let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncExpense", data: exp }) });
                     exp.syncStatus = "Synced"; db.transaction(["expenses"], "readwrite").objectStore("expenses").put(exp); 
                 } catch(e) {}
             }
         }
+
         let cashDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
         for (const drop of cashDrops) {
             try {
-                let r = await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "syncCashDrop", data: drop }) });
+                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncCashDrop", data: drop }) });
                 db.transaction(["cash_drops"], "readwrite").objectStore("cash_drops").delete(drop.dropId);
             } catch(e) {}
         }
+
         let reports = await new Promise(res => db.transaction(["shift_reports"], "readonly").objectStore("shift_reports").getAll().onsuccess = e => res(e.target.result));
         for (const report of reports) {
             try {
-                let r = await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "syncShiftReport", data: report }) });
+                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncShiftReport", data: report }) });
                 db.transaction(["shift_reports"], "readwrite").objectStore("shift_reports").delete(report.shiftId);
             } catch(e) {}
         }
-    } finally { isSyncing = false; }
-};
 
-window.printCurrentShiftReport = async function() {
-    const data = window.currentShiftData;
-    if (!data) return alert("Data ringkasan shift tidak tersedia untuk dicetak.");
-    if (!btCharacteristic) {
-        alert("⚠️ Printer belum terhubung. Silakan nyalakan bluetooth dan klik tombol 'Printer: Offline' di menu atas.");
-        return;
-    }
-    try {
-        await window.buildShiftReportReceipt(data);
-        alert("Laporan penutupan shift berhasil dikirim ke printer!");
-    } catch (e) { alert("Gagal mencetak laporan: " + e.toString()); }
-};
-
-window.triggerEndShift = async function() {
-    const data = window.currentShiftData; if (!data) return alert("Gagal mengambil data shift kasir.");
-    if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
-    
-    let tx = db.transaction(["local_shift_history", "shift_reports", "active_shifts"], "readwrite");
-    tx.objectStore("local_shift_history").add(data); tx.objectStore("shift_reports").add(data);
-    tx.objectStore("active_shifts").delete(currentPin);
-    
-    tx.oncomplete = async () => {
-        document.getElementById("shift-report-modal").classList.add("hidden");
-        
-        if (!btCharacteristic) {
-            alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
-        } else {
+        // MOVED INSIDE runBackgroundSync!
+        let voids = await new Promise(res => db.transaction(["void_requests"], "readonly").objectStore("void_requests").getAll().onsuccess = e => res(e.target.result));
+        for (const req of voids) {
             try {
-                await window.buildShiftReportReceipt(data);
-            } catch (e) {
-                alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
-            }
+                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "requestVoid", data: req }) });
+                db.transaction(["void_requests"], "readwrite").objectStore("void_requests").delete(req.id);
+            } catch(e) {}
         }
-        
-        await window.runBackgroundSync(); window.location.reload(); 
-    };
+
+    } finally { isSyncing = false; }
 };
 
 window.openShiftReport = function() {
@@ -1159,6 +1118,44 @@ window.openShiftReport = function() {
         if(endBtn) endBtn.classList.remove("hidden");
 
         document.getElementById("shift-report-modal").classList.remove("hidden");
+    };
+};
+
+window.printCurrentShiftReport = async function() {
+    const data = window.currentShiftData;
+    if (!data) return alert("Data ringkasan shift tidak tersedia untuk dicetak.");
+    if (!btCharacteristic) {
+        alert("⚠️ Printer belum terhubung. Silakan nyalakan bluetooth dan klik tombol 'Printer: Offline' di menu atas.");
+        return;
+    }
+    try {
+        await window.buildShiftReportReceipt(data);
+        alert("Laporan penutupan shift berhasil dikirim ke printer!");
+    } catch (e) { alert("Gagal mencetak laporan: " + e.toString()); }
+};
+
+window.triggerEndShift = async function() {
+    const data = window.currentShiftData; if (!data) return alert("Gagal mengambil data shift kasir.");
+    if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
+    
+    let tx = db.transaction(["local_shift_history", "shift_reports", "active_shifts"], "readwrite");
+    tx.objectStore("local_shift_history").add(data); tx.objectStore("shift_reports").add(data);
+    tx.objectStore("active_shifts").delete(currentPin);
+    
+    tx.oncomplete = async () => {
+        document.getElementById("shift-report-modal").classList.add("hidden");
+        
+        if (!btCharacteristic) {
+            alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
+        } else {
+            try {
+                await window.buildShiftReportReceipt(data);
+            } catch (e) {
+                alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
+            }
+        }
+        
+        await window.runBackgroundSync(); window.location.reload(); 
     };
 };
 
