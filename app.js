@@ -55,6 +55,46 @@ async function hashString(str) {
 function formatWIB(dateString) { return new Date(dateString).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '') + ' WIB'; }
 function formatTimeOnlyWIB(dateString) { return new Date(dateString).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour12: false, hour: '2-digit', minute: '2-digit' }) + ' WIB'; }
 
+// ==========================================
+// LOGIKA PWA INSTALL
+// ==========================================
+let deferredPrompt;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    // Mencegah browser menampilkan prompt install default
+    e.preventDefault(); 
+    // Simpan event untuk dipicu nanti
+    deferredPrompt = e; 
+    
+    // Tampilkan tombol di menu POS atas
+    const installBtn = document.getElementById('btn-install'); 
+    if(installBtn) installBtn.classList.remove('hidden'); 
+    
+    // Tampilkan tombol di layar Login
+    const loginInstallBtn = document.getElementById('btn-install-login');
+    if(loginInstallBtn) loginInstallBtn.classList.remove('hidden');
+});
+
+window.installPWA = function() { 
+    if (deferredPrompt) {
+        // Tampilkan prompt install bawaan sistem
+        deferredPrompt.prompt(); 
+        
+        // Tunggu respon pengguna
+        deferredPrompt.userChoice.then((choiceResult) => {
+            if (choiceResult.outcome === 'accepted') {
+                // Sembunyikan kedua tombol jika user setuju menginstal
+                let btn = document.getElementById('btn-install');
+                if(btn) btn.classList.add('hidden');
+                
+                let loginBtn = document.getElementById('btn-install-login');
+                if(loginBtn) loginBtn.classList.add('hidden');
+            }
+            deferredPrompt = null; 
+        }); 
+    } 
+};
+
 // 2. PRINTER ENGINE
 window.connectBluetoothPrinter = async function() {
     try {
