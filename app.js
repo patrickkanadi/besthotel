@@ -84,6 +84,39 @@ function formatEscPosLine(left, right, isBig) {
     return leftStr + "\n" + " ".repeat(Math.max(0, maxLen - rightStr.length)) + rightStr;
 }
 
+window.buildShiftReportReceipt = async function(data) {
+    const h1 = "HOTEL POS";
+    const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00"; 
+    const CMD_BOLD_ON = "\x1B\x45\x01"; const CMD_BOLD_OFF = "\x1B\x45\x00"; 
+    const CMD_BIG = "\x1B!\x11"; const CMD_NORMAL = "\x1B!\x00"; const CMD_CUT = "\x1D\x56\x41\x10";
+
+    let r = CMD_INIT + CMD_CENTER + CMD_BOLD_ON + CMD_BIG + h1 + "\n" + CMD_NORMAL + CMD_BOLD_OFF;
+    r += "LAPORAN TUTUP SHIFT\n--------------------------------\n" + CMD_LEFT;
+    r += "ID Shift: " + data.shiftId + "\nKasir   : " + data.cashier + "\nLogin   : " + formatTimeOnlyWIB(data.loginTime) + "\nLogout  : " + formatTimeOnlyWIB(data.logoutTime) + "\n--------------------------------\n";
+    r += formatEscPosLine("Total Pesanan", data.totalOrders, false) + "\n--------------------------------\n";
+    
+    r += CMD_BOLD_ON + "PENERIMAAN LAUNDRY:" + CMD_BOLD_OFF + "\n";
+    r += formatEscPosLine("Tunai", (data.cashLaundry || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("QRIS", (data.qrisLaundry || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("Omset Laundry", (data.omsetLaundry || 0).toLocaleString('id-ID'), false) + "\n--------------------------------\n";
+    
+    r += CMD_BOLD_ON + "PENERIMAAN HOTEL:" + CMD_BOLD_OFF + "\n";
+    r += formatEscPosLine("Tunai", (data.cashHotel || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("Transfer", (data.transferHotel || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("Omset Hotel", (data.omsetHotel || 0).toLocaleString('id-ID'), false) + "\n--------------------------------\n";
+
+    r += CMD_BOLD_ON + "PENGELUARAN:" + CMD_BOLD_OFF + "\n";
+    r += formatEscPosLine("Laci Laundry", (data.expLaundry || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("Laci Hotel", (data.expHotel || 0).toLocaleString('id-ID'), false) + "\n--------------------------------\n";
+
+    r += CMD_BOLD_ON + "SISA UANG LACI AKTUAL:" + CMD_BOLD_OFF + "\n";
+    r += formatEscPosLine("Laci Laundry", (data.netLaundry || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("Laci Hotel", (data.netHotel || 0).toLocaleString('id-ID'), false) + "\n--------------------------------\n";
+    
+    r += "\n\n\n\n" + CMD_CUT;
+    const encoder = new TextEncoder(); await sendToPrinter(encoder.encode(r));
+};
+
 window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, payMethod) {
     const h1 = "HOTEL POS"; 
     const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00";
@@ -570,17 +603,38 @@ window.confirmSettlement = function() {
     document.getElementById("settlement-modal").classList.add("hidden"); window.renderActiveTickets(); window.runBackgroundSync();
 };
 
-window.openExpenseModal = function() { document.getElementById("expense-modal").classList.remove("hidden"); };
+window.openExpenseModal = function() { 
+    document.getElementById("expense-modal").classList.remove("hidden"); 
+    const list = document.getElementById("expense-category-list");
+    if(list) {
+        list.innerHTML = "";
+        db.transaction(["expense_categories"], "readonly").objectStore("expense_categories").getAll().onsuccess = (e) => {
+            e.target.result.forEach(cat => { 
+                const opt = document.createElement("option"); 
+                opt.value = cat.name; 
+                list.appendChild(opt); 
+            });
+        };
+    }
+};
+
 window.saveExpense = function() {
     const amount = Number(document.getElementById("exp-amount").value); 
     const category = document.getElementById("exp-category").value.trim();
     const drawer = document.getElementById("exp-drawer").value;
     if (amount <= 0 || !category) return alert("Harap masukkan jumlah dan kategori yang benar.");
     
+    // Save to local IndexedDB to enable immediate autocomplete next time
+    db.transaction(["expense_categories"], "readwrite").objectStore("expense_categories").put({ name: category });
+
     const payload = { expenseId: "EXP-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId, drawer: drawer, category: category, description: document.getElementById("exp-desc").value || "-", amount: amount, status: "Active", syncStatus: "Pending" };
     db.transaction(["expenses"], "readwrite").objectStore("expenses").add(payload);
     
-    document.getElementById("expense-modal").classList.add("hidden"); alert("Pengeluaran Berhasil Dicatat!"); window.runBackgroundSync();
+    document.getElementById("expense-modal").classList.add("hidden"); 
+    document.getElementById("exp-amount").value = "";
+    document.getElementById("exp-category").value = "";
+    document.getElementById("exp-desc").value = "";
+    alert("Pengeluaran Berhasil Dicatat!"); window.runBackgroundSync();
 };
 
 window.openHistoryModal = function() { document.getElementById("history-modal").classList.remove("hidden"); window.renderHistoryList('orders'); };
@@ -650,20 +704,23 @@ window.syncMasterData = async function(forceAwait = false) {
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
             let p1 = new Promise((resolve) => {
-                let txFast = db.transaction(["staff", "menu"], "readwrite");
+                let txFast = db.transaction(["staff", "menu", "expense_categories"], "readwrite");
                 txFast.objectStore("staff").clear(); result.data.staff.forEach(s => txFast.objectStore("staff").put(s));
                 txFast.objectStore("menu").clear(); result.data.menu.forEach(m => txFast.objectStore("menu").put(m));
                 
+                // Refresh Expense Categories Database
+                txFast.objectStore("expense_categories").clear();
+                if (result.data.expenseCategories) {
+                    result.data.expenseCategories.forEach(c => txFast.objectStore("expense_categories").put({name: c}));
+                }
+
                 txFast.oncomplete = () => {
                     globalMenuData = result.data.menu; 
-                    
-                    // Restoring SPK Tickets from Backend
                     window.activeLaundryTickets = result.data.activeLaundryOrders || [];
                     let tc = document.getElementById("ticket-count"); if(tc) tc.innerText = activeLaundryTickets.length;
                     
                     if (!document.getElementById("pos-screen").classList.contains("hidden")) { 
-                        loadMenuUI(); 
-                        window.renderActiveTickets();
+                        loadMenuUI(); window.renderActiveTickets();
                     }
                     if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71"; resolve();
                 };
@@ -701,6 +758,13 @@ window.runBackgroundSync = async function() {
             try {
                 let r = await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "syncCashDrop", data: drop }) });
                 db.transaction(["cash_drops"], "readwrite").objectStore("cash_drops").delete(drop.dropId);
+            } catch(e) {}
+        }
+        let reports = await new Promise(res => db.transaction(["shift_reports"], "readonly").objectStore("shift_reports").getAll().onsuccess = e => res(e.target.result));
+        for (const report of reports) {
+            try {
+                let r = await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: "syncShiftReport", data: report }) });
+                db.transaction(["shift_reports"], "readwrite").objectStore("shift_reports").delete(report.shiftId);
             } catch(e) {}
         }
     } finally { isSyncing = false; }
@@ -793,6 +857,19 @@ window.openShiftReport = function() {
 
         document.getElementById("shift-report-modal").classList.remove("hidden");
     };
+};
+
+window.printCurrentShiftReport = async function() {
+    const data = window.currentShiftData;
+    if (!data) return alert("Data ringkasan shift tidak tersedia untuk dicetak.");
+    try {
+        if (typeof window.buildShiftReportReceipt === "function") {
+            await window.buildShiftReportReceipt(data);
+            alert("Laporan penutupan shift berhasil dikirim ke printer!");
+        } else {
+            alert("⚠️ Modul printer belum terhubung. Silakan nyalakan bluetooth dan klik Printer di menu atas.");
+        }
+    } catch (e) { alert("Gagal mencetak laporan: " + e.toString()); }
 };
 
 window.triggerEndShift = async function() {
