@@ -291,9 +291,11 @@
         <div class="modal-content modal-large">
             <h2 style="margin-top:0;">📋 Riwayat Sistem Global</h2>
             <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
-                <button onclick="renderHistoryList('orders')" style="flex:1; padding:10px; cursor:pointer;">🛍️ Transaksi</button>
-                <button onclick="renderHistoryList('expenses')" style="flex:1; padding:10px; cursor:pointer;">💸 Pengeluaran</button>
+                <button onclick="renderHistoryList('orders')" style="flex:1; padding:10px; cursor:pointer; background:#fff; border:1px solid #ddd; border-radius:4px;">🛍️ Transaksi</button>
+                <button onclick="renderHistoryList('expenses')" style="flex:1; padding:10px; cursor:pointer; background:#fff; border:1px solid #ddd; border-radius:4px;">💸 Pengeluaran</button>
                 <button onclick="renderHistoryList('shifts')" style="flex:1; padding:10px; cursor:pointer; background:#8e44ad; color:white; border:none; border-radius:4px; font-weight:bold;">📊 Riwayat Shift</button>
+                
+                <button onclick="renderHistoryList('cashflow')" style="flex:1; padding:10px; cursor:pointer; background:#16a085; color:white; border:none; border-radius:4px; font-weight:bold;">💳 Arus Kas</button>
             </div>
             <div class="history-list" id="history-container" style="max-height:400px; overflow-y:auto; background:#f9f9f9;"></div>
             <button onclick="document.getElementById('history-modal').classList.add('hidden')" style="width:100%; padding:15px; margin-top:15px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Tutup</button>
