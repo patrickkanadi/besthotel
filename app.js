@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbykTybIX-9YVGytTKeCBbDdpU9ihP3lbYFaAEBJQA0iE7uaPpI7Te1U568pZdTian_-mw/exec"; // GANTI JIKA PERLU
+const API_URL = "https://script.google.com/macros/s/AKfycbykTybIX-9YVGytTKeCBbDdpU9ihP3lbYFaAEBJQA0iE7uaPpI7Te1U568pZdTian_-mw/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
 const DB_VERSION = 5; 
 let db;
@@ -22,7 +22,12 @@ window.globalRoomList = [];
 window.globalRecentOrders = [];
 window.globalRecentExpenses = [];
 window.globalRecentShifts = [];
-window.globalRecentDrops = [];
+window.globalPendingInbounds = [];
+window.globalRoomList = [];
+window.globalRecentOrders = [];
+window.globalRecentExpenses = [];
+window.globalRecentShifts = [];
+window.globalRecentDrops = []; // ✅ NEW
 
 let btDevice = null; let btCharacteristic = null;
 window.lastActivityWrite = Date.now();
@@ -30,7 +35,7 @@ window.lastActivityWrite = Date.now();
 // 1. INIT DB
 function initDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        const request = indexedDB.open(DB_NAME, 6); // Bumped Version
         request.onupgradeneeded = (event) => {
             db = event.target.result;
             if (!db.objectStoreNames.contains("staff")) db.createObjectStore("staff", { keyPath: "pin" });
@@ -44,6 +49,9 @@ function initDB() {
             if (!db.objectStoreNames.contains("expense_categories")) db.createObjectStore("expense_categories", { keyPath: "name" });
             if (!db.objectStoreNames.contains("void_requests")) db.createObjectStore("void_requests", { keyPath: "id" });
             if (!db.objectStoreNames.contains("local_shift_history")) db.createObjectStore("local_shift_history", { keyPath: "shiftId" });
+            // NEW TABLES
+            if (!db.objectStoreNames.contains("stock_inbounds")) db.createObjectStore("stock_inbounds", { keyPath: "inboundId" });
+            if (!db.objectStoreNames.contains("stock_opnames")) db.createObjectStore("stock_opnames", { keyPath: "opnameId" });
         };
         request.onsuccess = (e) => { db = e.target.result; resolve(db); };
         request.onerror = (e) => { reject(e); };
@@ -56,21 +64,29 @@ function initDB() {
 let deferredPrompt;
 
 window.addEventListener('beforeinstallprompt', (e) => {
+    // Mencegah browser menampilkan prompt install default
     e.preventDefault(); 
+    // Simpan event untuk dipicu nanti
     deferredPrompt = e; 
     
+    // Tampilkan tombol di menu POS atas
     const installBtn = document.getElementById('btn-install'); 
     if(installBtn) installBtn.classList.remove('hidden'); 
     
+    // Tampilkan tombol di layar Login
     const loginInstallBtn = document.getElementById('btn-install-login');
     if(loginInstallBtn) loginInstallBtn.classList.remove('hidden');
 });
 
 window.installPWA = function() { 
     if (deferredPrompt) {
+        // Tampilkan prompt install bawaan sistem
         deferredPrompt.prompt(); 
+        
+        // Tunggu respon pengguna
         deferredPrompt.userChoice.then((choiceResult) => {
             if (choiceResult.outcome === 'accepted') {
+                // Sembunyikan kedua tombol jika user setuju menginstal
                 let btn = document.getElementById('btn-install');
                 if(btn) btn.classList.add('hidden');
                 
@@ -293,6 +309,7 @@ window.viewShiftDetailsGlobal = function(shiftId) {
     }
     document.getElementById("sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
     
+    // Hide End Shift button if viewing history
     const endBtn = document.getElementById("btn-end-shift");
     if(endBtn) endBtn.classList.add("hidden");
 
@@ -460,7 +477,9 @@ window.handleAutocomplete = function(e) {
     if (!resBox) return;
 
     let matches = window.globalRoomList || [];
-    if (val.length > 0) matches = matches.filter(r => r.toLowerCase().includes(val));
+    if (val.length > 0) {
+        matches = matches.filter(r => r.toLowerCase().includes(val));
+    }
     
     if (matches.length > 0) {
         resBox.innerHTML = matches.map(r => `
@@ -480,6 +499,7 @@ window.selectRoom = function(room) {
 
 // 5. MENU & NUMPAD & TRANSAKSI (CART)
 function loadMenuUI() {
+    // 1. Setup Location (Layer 1)
     const locations = [...new Set(globalMenuData.map(i => i.location))]; 
     if (!currentLocation || !locations.includes(currentLocation)) currentLocation = locations[0];
 
@@ -507,6 +527,7 @@ function loadMenuUI() {
         });
     }
 
+    // 2. Setup Category (Layer 2)
     const filteredByLoc = globalMenuData.filter(i => i.location === currentLocation);
     const categories = [...new Set(filteredByLoc.map(i => i.category))]; 
     if (!currentCategory || !categories.includes(currentCategory)) currentCategory = categories[0];
@@ -668,27 +689,32 @@ window.openReview = function() {
 window.closeReview = function() { let reviewModal = document.getElementById("review-modal"); if (reviewModal) { reviewModal.classList.add("hidden"); } };
 
 window.calculateRemaining = function() {
-    let free = Number(document.getElementById("pay-free").value) || 0;
-    let qris = Number(document.getElementById("pay-qris").value) || 0;
-    let trans = Number(document.getElementById("pay-transfer").value) || 0;
+    let f = Number(document.getElementById("pay-free").value) || 0;
+    let q = Number(document.getElementById("pay-qris").value) || 0;
+    let t = Number(document.getElementById("pay-transfer").value) || 0;
 
-    let remLaundry = Math.max(0, window.cartLaundryTotal - qris);
-    let remHotel = Math.max(0, window.cartHotelTotal - trans);
+    // Strict limitations
+    if (q > window.cartLaundryTotal) { q = window.cartLaundryTotal; document.getElementById("pay-qris").value = q; }
+    if (t > window.cartHotelTotal) { t = window.cartHotelTotal; document.getElementById("pay-transfer").value = t; }
 
-    let discountLeft = free;
+    let remLaundry = window.cartLaundryTotal - q;
+    let remHotel = window.cartHotelTotal - t;
+
+    let discountLeft = f;
     if (remHotel >= discountLeft) {
-        remHotel -= discountLeft;
+        remHotel -= discountLeft; discountLeft = 0;
     } else {
-        discountLeft -= remHotel;
-        remHotel = 0;
+        discountLeft -= remHotel; remHotel = 0;
         remLaundry = Math.max(0, remLaundry - discountLeft);
     }
 
     window.cashLaundryAmount = remLaundry;
     window.cashHotelAmount = remHotel;
-    document.getElementById("pay-cash").value = (remLaundry + remHotel).toFixed(0);
 
-    window.cartGrandTotal = Math.max(0, window.cartSubtotal - free);
+    let requiredCash = remLaundry + remHotel;
+    document.getElementById("pay-cash").value = requiredCash;
+
+    window.cartGrandTotal = Math.max(0, window.cartSubtotal - f);
     let rgt = document.getElementById("review-grandtotal");
     if(rgt) rgt.innerText = `Rp ${window.cartGrandTotal.toLocaleString('id-ID')}`;
 };
@@ -713,6 +739,7 @@ window.finalizeOrder = async function(shouldPrint) {
     let hasTicketItem = currentCart.some(i => i.workflow === "TICKET");
     let finalStatus = hasTicketItem ? "Processing" : "Completed";
 
+    // ✅ Note: guestName and guestPhone are gone. The Backend does it automatically now.
     const orderPayload = {
         orderId: "ORD-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId,
         roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, 
@@ -846,6 +873,7 @@ window.submitVoidRequest = function() {
     if(currentVoidTarget.type === 'shifts') { let s = window.globalRecentShifts.find(x => x.shiftId === currentVoidTarget.id); if(s) s.status = "Void Pending"; window.renderHistoryList('shifts'); }
 };
 
+
 window.openHistoryModal = function() { document.getElementById("history-modal").classList.remove("hidden"); window.renderHistoryList('orders'); };
 window.renderHistoryList = function(type) {
     const container = document.getElementById("history-container"); 
@@ -903,10 +931,12 @@ window.renderHistoryList = function(type) {
                     <button onclick="printShiftGlobal('${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
                 </div></div>`;
         });
+        
     } else if (type === 'cashflow') {
         let ledgerLaundry = [];
         let ledgerHotel = [];
         
+        // 1. Ambil Pemasukan dari Transaksi (Pisahkan Laundry & Hotel)
         (window.globalRecentOrders || []).forEach(o => {
             if (o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending") {
                 let cashL = o.cashLaundryAmount || 0;
@@ -933,6 +963,7 @@ window.renderHistoryList = function(type) {
             }
         });
 
+        // 2. Ambil Pengeluaran Laci
         (window.globalRecentExpenses || []).forEach(e => {
             if (e.status !== "Voided" && e.status !== "Void Pending") {
                 let entry = {
@@ -945,6 +976,7 @@ window.renderHistoryList = function(type) {
             }
         });
 
+        // 3. Ambil Setoran/Tarik Uang
         (window.globalRecentDrops || []).forEach(d => {
             let entry = {
                 timestamp: new Date(d.timestamp).getTime(), dateStr: d.timestamp, type: "OUT",
@@ -955,15 +987,18 @@ window.renderHistoryList = function(type) {
             else ledgerHotel.push(entry);
         });
 
+        // Urutkan dari yang terbaru ke terlama
         ledgerLaundry.sort((a, b) => b.timestamp - a.timestamp);
         ledgerHotel.sort((a, b) => b.timestamp - a.timestamp);
         
+        // Kalkulasi Netto Masing-Masing Laci
         let inL = 0; let outL = 0;
         ledgerLaundry.forEach(i => i.type === 'IN' ? inL += i.amount : outL += i.amount);
         
         let inH = 0; let outH = 0;
         ledgerHotel.forEach(i => i.type === 'IN' ? inH += i.amount : outH += i.amount);
 
+        // Template HTML untuk List
         let buildLedgerHTML = (ledgerData) => {
             if(ledgerData.length === 0) return `<div style="text-align:center; padding:10px; color:#7f8c8d;">Belum ada arus kas.</div>`;
             let r = "";
@@ -984,6 +1019,7 @@ window.renderHistoryList = function(type) {
             return r;
         };
 
+        // Render 2 Kolom Bersebelahan
         let html = `
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom: 10px;">
             <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:10px;">
@@ -1020,8 +1056,12 @@ window.submitCashDrop = function() {
 window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot");
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; }
+    
     try {
-        const response = await fetch(`${API_URL}?t=${Date.now()}`, { method: 'GET', headers: { 'Accept': 'application/json' } }); 
+        const response = await fetch(`${API_URL}?t=${Date.now()}`, { 
+            method: 'GET', headers: { 'Accept': 'application/json' }
+        }); 
+        
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const result = await response.json();
         
@@ -1030,8 +1070,9 @@ window.syncMasterData = async function(forceAwait = false) {
             window.masterDrawerBalanceHotel = result.masterDrawerBalanceHotel || 0;
             window.globalRecentOrders = result.data.recentOrders || [];
             window.globalRecentExpenses = result.data.recentExpenses || [];
-            window.globalRecentDrops = result.data.recentDrops || [];
+            window.globalRecentDrops = result.data.recentDrops || []; // ✅ CAPTURE DROPS
             window.globalRecentShifts = result.recentShifts || [];
+            window.globalPendingInbounds = result.data.pendingInbounds || [];
             
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
@@ -1057,8 +1098,11 @@ window.syncMasterData = async function(forceAwait = false) {
                 };
             });
             if(forceAwait) await p1; 
-        }
-    } catch (e) { if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; }
+        } else { throw new Error(result.message || "Unknown Server Error"); }
+    } catch (e) { 
+        console.error(e);
+        if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; 
+    }
 };
 
 window.manualPushSync = async function() { await window.runBackgroundSync(); await window.syncMasterData(); alert("Sinkronisasi Database Berhasil!"); };
@@ -1075,6 +1119,7 @@ window.runBackgroundSync = async function() {
                 } catch(e) {}
             }
         }
+
         let expenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
         for (const exp of expenses) {
             if (exp.syncStatus === "Pending") {
@@ -1084,6 +1129,7 @@ window.runBackgroundSync = async function() {
                 } catch(e) {}
             }
         }
+
         let cashDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
         for (const drop of cashDrops) {
             try {
@@ -1091,6 +1137,7 @@ window.runBackgroundSync = async function() {
                 db.transaction(["cash_drops"], "readwrite").objectStore("cash_drops").delete(drop.dropId);
             } catch(e) {}
         }
+
         let reports = await new Promise(res => db.transaction(["shift_reports"], "readonly").objectStore("shift_reports").getAll().onsuccess = e => res(e.target.result));
         for (const report of reports) {
             try {
@@ -1098,6 +1145,8 @@ window.runBackgroundSync = async function() {
                 db.transaction(["shift_reports"], "readwrite").objectStore("shift_reports").delete(report.shiftId);
             } catch(e) {}
         }
+
+        // MOVED INSIDE runBackgroundSync!
         let voids = await new Promise(res => db.transaction(["void_requests"], "readonly").objectStore("void_requests").getAll().onsuccess = e => res(e.target.result));
         for (const req of voids) {
             try {
@@ -1105,7 +1154,196 @@ window.runBackgroundSync = async function() {
                 db.transaction(["void_requests"], "readwrite").objectStore("void_requests").delete(req.id);
             } catch(e) {}
         }
+
+        let inbounds = await new Promise(res => db.transaction(["stock_inbounds"], "readonly").objectStore("stock_inbounds").getAll().onsuccess = e => res(e.target.result));
+        for (const inb of inbounds) {
+            try {
+                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "confirmInbound", data: inb }) });
+                db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").delete(inb.inboundId);
+            } catch(e) {}
+        }
+
+        let opnames = await new Promise(res => db.transaction(["stock_opnames"], "readonly").objectStore("stock_opnames").getAll().onsuccess = e => res(e.target.result));
+        for (const opn of opnames) {
+            try {
+                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncOpname", data: opn }) });
+                db.transaction(["stock_opnames"], "readwrite").objectStore("stock_opnames").delete(opn.opnameId);
+            } catch(e) {}
+        }
+
     } finally { isSyncing = false; }
+};
+
+// ==========================================
+// STOCK INBOUND CONFIRMATION
+// ==========================================
+window.openInboundModal = function() {
+    const container = document.getElementById("inbound-list-container");
+    container.innerHTML = "";
+    if (window.globalPendingInbounds.length === 0) {
+        container.innerHTML = `<div style="padding:20px; text-align:center; color:#7f8c8d;">Tidak ada pengiriman stok yang tertunda.</div>`;
+    } else {
+        window.globalPendingInbounds.forEach((inb, index) => {
+            container.innerHTML += `
+            <div class="history-row" style="margin-bottom:10px; border-radius:6px; border:1px solid #eee; padding:15px;">
+                <div style="flex:1;">
+                    <strong style="color:#2980b9; font-size:16px;">${inb.itemName}</strong><br>
+                    <small style="color:#7f8c8d;">Dari: ${inb.sender} | Dikirim: ${inb.qtySent}</small><br>
+                    <small style="color:#e67e22;">Catatan: ${inb.notes || "-"}</small>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; background:#f4f7f6; padding:8px; border-radius:8px;">
+                    <button onclick="adjInbQty(${index}, -1)" style="padding:8px 12px; background:#e74c3c; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">-</button>
+                    <input type="number" id="inb-qty-${index}" value="${inb.qtySent}" style="width:60px; text-align:center; padding:8px; border:1px solid #ccc; border-radius:4px; font-weight:bold;">
+                    <button onclick="adjInbQty(${index}, 1)" style="padding:8px 12px; background:#2ecc71; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">+</button>
+                    <button onclick="confirmInboundItem(${index}, '${inb.inboundId}')" style="padding:10px 15px; background:#34495e; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-left:10px;">Terima</button>
+                </div>
+            </div>`;
+        });
+    }
+    document.getElementById("inbound-modal").classList.remove("hidden");
+};
+
+window.adjInbQty = function(index, delta) {
+    let input = document.getElementById(`inb-qty-${index}`);
+    let current = Number(input.value) || 0;
+    input.value = Math.max(0, current + delta);
+};
+
+window.confirmInboundItem = function(index, inboundId) {
+    let actualQty = Number(document.getElementById(`inb-qty-${index}`).value) || 0;
+    let inbItem = window.globalPendingInbounds.find(x => x.inboundId === inboundId);
+    if (!inbItem) return;
+    
+    if(!confirm(`Anda yakin menerima fisik ${actualQty}x ${inbItem.itemName}?`)) return;
+
+    let payload = { inboundId: inboundId, qtyReceived: actualQty, cashier: currentCashier, syncStatus: "Pending" };
+    db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").add(payload);
+    
+    // Update local cache & UI immediately
+    let mItem = globalMenuData.find(m => m.name === inbItem.itemName);
+    if(mItem) mItem.currentStock += actualQty;
+    
+    window.globalPendingInbounds = window.globalPendingInbounds.filter(x => x.inboundId !== inboundId);
+    window.openInboundModal(); // Refresh modal
+    window.renderProductGrid(); // Refresh stock UI
+    window.runBackgroundSync();
+};
+
+// ==========================================
+// STOCK OPNAME (TABULAR)
+// ==========================================
+window.openOpnameModal = function() {
+    const container = document.getElementById("opname-list-container");
+    let trackableItems = globalMenuData.filter(m => m.trackStock);
+    
+    trackableItems.sort((a, b) => {
+        if (a.location !== b.location) return a.location.localeCompare(b.location);
+        if (a.category !== b.category) return a.category.localeCompare(b.category);
+        return a.name.localeCompare(b.name);
+    });
+
+    const locs = [...new Set(trackableItems.map(m => m.location))];
+    const cats = [...new Set(trackableItems.map(m => m.category))];
+    
+    let locHtml = `<option value="">Semua Lokasi</option>`;
+    locs.forEach(l => locHtml += `<option value="${l}">${l}</option>`);
+    document.getElementById("opname-filter-loc").innerHTML = locHtml;
+
+    let catHtml = `<option value="">Semua Kategori</option>`;
+    cats.forEach(c => catHtml += `<option value="${c}">${c}</option>`);
+    document.getElementById("opname-filter-cat").innerHTML = catHtml;
+    
+    document.getElementById("opname-search").value = "";
+
+    if (trackableItems.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding: 20px; color:#7f8c8d;">Tidak ada item yang dilacak stoknya.</div>`;
+    } else {
+        let html = `<table style="width:100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+                <tr style="background: #2c3e50; color: white; text-align: left;">
+                    <th style="padding: 10px; border-radius: 6px 0 0 0;">Lokasi & Kategori</th>
+                    <th style="padding: 10px;">Nama Item</th>
+                    <th style="padding: 10px; text-align: center;">Sistem</th>
+                    <th style="padding: 10px; text-align: center;">Fisik</th>
+                    <th style="padding: 10px; border-radius: 0 6px 0 0;">Catatan</th>
+                </tr>
+            </thead>
+            <tbody>`;
+        
+        trackableItems.forEach((m, index) => {
+            html += `
+                <tr class="opname-row" data-loc="${m.location}" data-cat="${m.category}" data-name="${m.name.toLowerCase()}" style="border-bottom: 1px solid #ddd; background: ${index % 2 === 0 ? '#fff' : '#fcfcfc'};">
+                    <td style="padding: 10px; color: #7f8c8d; font-size:11px;">${m.location} <br> <strong>${m.category}</strong></td>
+                    <td style="padding: 10px; color: #2980b9; font-weight: bold;">${m.name}</td>
+                    <td style="padding: 10px; text-align: center; font-weight: bold;">${m.currentStock}</td>
+                    <td style="padding: 10px; text-align: center;">
+                        <input type="number" id="opn-qty-${m.itemId}" placeholder="${m.currentStock}" style="width: 70px; padding: 6px; text-align: center; border: 1px solid #bdc3c7; border-radius: 4px; font-weight: bold;">
+                    </td>
+                    <td style="padding: 10px;">
+                        <input type="text" id="opn-note-${m.itemId}" placeholder="Catatan..." style="width: 100%; padding: 6px; border: 1px solid #bdc3c7; border-radius: 4px;">
+                    </td>
+                </tr>`;
+        });
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+    }
+    
+    window.filterOpnameList();
+    document.getElementById("opname-modal").classList.remove("hidden");
+};
+
+window.filterOpnameList = function() {
+    let locFilter = document.getElementById("opname-filter-loc").value;
+    let catFilter = document.getElementById("opname-filter-cat").value;
+    let search = document.getElementById("opname-search").value.toLowerCase();
+    
+    let rows = document.querySelectorAll(".opname-row");
+    rows.forEach(row => {
+        let rLoc = row.getAttribute("data-loc");
+        let rCat = row.getAttribute("data-cat");
+        let rName = row.getAttribute("data-name");
+        
+        let show = true;
+        if (locFilter && rLoc !== locFilter) show = false;
+        if (catFilter && rCat !== catFilter) show = false;
+        if (search && !rName.includes(search)) show = false;
+        
+        row.style.display = show ? "" : "none";
+    });
+};
+
+window.submitOpname = function() {
+    let trackableItems = globalMenuData.filter(m => m.trackStock);
+    let changesMade = 0;
+    
+    trackableItems.forEach((m) => {
+        let qtyEl = document.getElementById(`opn-qty-${m.itemId}`);
+        let noteEl = document.getElementById(`opn-note-${m.itemId}`);
+        
+        if (qtyEl && qtyEl.value !== "") {
+            let physStock = Number(qtyEl.value);
+            let diff = physStock - m.currentStock;
+            let note = noteEl ? noteEl.value.trim() : "";
+            if (!note) note = "-";
+            
+            if (diff !== 0) {
+                let payload = { 
+                    opnameId: "OPN-" + Date.now() + "-" + m.itemId, timestamp: new Date().toISOString(), cashier: currentCashier, 
+                    itemName: m.name, systemStock: m.currentStock, physicalStock: physStock, difference: diff, notes: note, syncStatus: "Pending" 
+                };
+                db.transaction(["stock_opnames"], "readwrite").objectStore("stock_opnames").add(payload);
+                m.currentStock = physStock; // Update local memory immediately
+                changesMade++;
+            }
+        }
+    });
+    
+    if (changesMade === 0) return alert("Tidak ada perubahan stok fisik yang dimasukkan.");
+    
+    document.getElementById("opname-modal").classList.add("hidden");
+    alert(`${changesMade} item stok berhasil diperbarui!`);
+    window.renderProductGrid();
+    window.runBackgroundSync();
 };
 
 window.openShiftReport = async function() {
@@ -1115,6 +1353,7 @@ window.openShiftReport = async function() {
     let originalText = btn ? btn.innerText : "📊 Shift";
     if (btn) btn.innerText = "⏳ Sinkronisasi...";
     
+    // GUARANTEE DRAWER ACCURACY: Push local changes, pull exact Setting numbers
     await window.runBackgroundSync();
     await window.syncMasterData(true);
     
@@ -1162,6 +1401,7 @@ window.openShiftReport = async function() {
         else dropH += d.amount;
     });
 
+    // Uang fisik aktual = Cash Masuk - Expense - Uang Ditarik ke Admin/Bank
     let netL = cashL - expL - dropL;
     let netH = cashH - expH - dropH;
 
@@ -1186,6 +1426,7 @@ window.openShiftReport = async function() {
     if (document.getElementById("sr-exp-laundry")) document.getElementById("sr-exp-laundry").innerText = "Rp " + (expL + dropL).toLocaleString('id-ID');
     if (document.getElementById("sr-exp-hotel")) document.getElementById("sr-exp-hotel").innerText = "Rp " + (expH + dropH).toLocaleString('id-ID');
 
+    // 👉 PERFECT SYNC UI: We pull EXACTLY what the Google Sheet Settings says
     if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + window.masterDrawerBalanceLaundry.toLocaleString('id-ID');
     if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + window.masterDrawerBalanceHotel.toLocaleString('id-ID');
 
@@ -1227,22 +1468,23 @@ window.triggerEndShift = async function() {
     const data = window.currentShiftData; if (!data) return alert("Gagal mengambil data shift kasir.");
     if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
     
-    if (!btCharacteristic) {
-        alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
-    } else {
-        try {
-            await window.buildShiftReportReceipt(data);
-        } catch (e) {
-            alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
-        }
-    }
-    
     let tx = db.transaction(["local_shift_history", "shift_reports", "active_shifts"], "readwrite");
     tx.objectStore("local_shift_history").add(data); tx.objectStore("shift_reports").add(data);
     tx.objectStore("active_shifts").delete(currentPin);
     
     tx.oncomplete = async () => {
         document.getElementById("shift-report-modal").classList.add("hidden");
+        
+        if (!btCharacteristic) {
+            alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
+        } else {
+            try {
+                await window.buildShiftReportReceipt(data);
+            } catch (e) {
+                alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
+            }
+        }
+        
         await window.runBackgroundSync(); window.location.reload(); 
     };
 };
