@@ -1119,40 +1119,81 @@ window.confirmInboundItem = function(index, inboundId) {
 // ==========================================
 // STOCK OPNAME
 // ==========================================
+// ==========================================
+// STOCK OPNAME (TABULAR)
+// ==========================================
 window.openOpnameModal = function() {
-    const select = document.getElementById("opname-item-select");
-    select.innerHTML = '<option value="">-- Pilih Item --</option>';
+    const container = document.getElementById("opname-list-container");
+    container.innerHTML = "";
     
-    globalMenuData.filter(m => m.trackStock).forEach(m => {
-        select.innerHTML += `<option value="${m.itemId}">${m.name} (Sistem: ${m.currentStock})</option>`;
-    });
+    let trackableItems = globalMenuData.filter(m => m.trackStock);
+    if (trackableItems.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding: 20px; color:#7f8c8d;">Tidak ada item yang dilacak stoknya.</div>`;
+    } else {
+        let html = `<table style="width:100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+                <tr style="background: #2c3e50; color: white; text-align: left;">
+                    <th style="padding: 10px; border-radius: 6px 0 0 0;">Nama Item</th>
+                    <th style="padding: 10px; text-align: center;">Stok Sistem</th>
+                    <th style="padding: 10px; text-align: center; border-radius: 0 6px 0 0;">Fisik Aktual</th>
+                </tr>
+            </thead>
+            <tbody>`;
+        
+        trackableItems.forEach((m, index) => {
+            html += `
+                <tr style="border-bottom: 1px solid #ddd; background: ${index % 2 === 0 ? '#fff' : '#fcfcfc'};">
+                    <td style="padding: 10px; color: #2980b9; font-weight: bold;">${m.name}</td>
+                    <td style="padding: 10px; text-align: center; font-weight: bold;">${m.currentStock}</td>
+                    <td style="padding: 10px; text-align: center;">
+                        <input type="number" id="opname-input-${index}" placeholder="${m.currentStock}" style="width: 80px; padding: 8px; text-align: center; border: 1px solid #bdc3c7; border-radius: 4px; font-weight: bold;">
+                    </td>
+                </tr>`;
+        });
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+    }
     
-    document.getElementById("opname-qty").value = "";
     document.getElementById("opname-notes").value = "";
     document.getElementById("opname-modal").classList.remove("hidden");
 };
 
 window.submitOpname = function() {
-    let itemId = document.getElementById("opname-item-select").value;
-    let physStock = document.getElementById("opname-qty").value;
     let notes = document.getElementById("opname-notes").value || "-";
+    let trackableItems = globalMenuData.filter(m => m.trackStock);
+    let changesMade = 0;
     
-    if(!itemId || physStock === "") return alert("Pilih item dan masukkan stok fisik.");
-    physStock = Number(physStock);
+    trackableItems.forEach((m, index) => {
+        let inputEl = document.getElementById(`opname-input-${index}`);
+        if (inputEl && inputEl.value !== "") { // Only process if they actually typed a number
+            let physStock = Number(inputEl.value);
+            let diff = physStock - m.currentStock;
+            
+            if (diff !== 0) {
+                let payload = { 
+                    opnameId: "OPN-" + Date.now() + "-" + index, 
+                    timestamp: new Date().toISOString(), 
+                    cashier: currentCashier, 
+                    itemName: m.name, 
+                    systemStock: m.currentStock, 
+                    physicalStock: physStock, 
+                    difference: diff, 
+                    notes: notes, 
+                    syncStatus: "Pending" 
+                };
+                db.transaction(["stock_opnames"], "readwrite").objectStore("stock_opnames").add(payload);
+                m.currentStock = physStock; // Update local memory immediately
+                changesMade++;
+            }
+        }
+    });
     
-    let mItem = globalMenuData.find(m => m.itemId === itemId);
-    if(!mItem) return;
-    
-    let diff = physStock - mItem.currentStock;
-    if(!confirm(`Opname: ${mItem.name}\nStok Sistem: ${mItem.currentStock}\nFisik: ${physStock}\nSelisih: ${diff}\n\nLanjutkan?`)) return;
-    
-    let payload = { opnameId: "OPN-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, itemName: mItem.name, systemStock: mItem.currentStock, physicalStock: physStock, difference: diff, notes: notes, syncStatus: "Pending" };
-    db.transaction(["stock_opnames"], "readwrite").objectStore("stock_opnames").add(payload);
-    
-    mItem.currentStock = physStock; // Update local memory immediately
+    if (changesMade === 0) {
+        return alert("Tidak ada perubahan stok fisik yang dimasukkan.");
+    }
     
     document.getElementById("opname-modal").classList.add("hidden");
-    alert("Stok berhasil diperbarui!");
+    alert(`${changesMade} item stok berhasil diperbarui!`);
     window.renderProductGrid();
     window.runBackgroundSync();
 };
