@@ -120,11 +120,13 @@
             <div><strong>Kasir:</strong> <span id="display-cashier">---</span></div>
             <div class="status-indicator">
                 <span class="dot-online" id="network-dot"></span><span id="network-text" style="margin-right: 10px;">Memuat...</span>
-                
                 <button class="btn-top hidden" id="btn-install" style="background:#2980b9; border-color:#2980b9;" onclick="installPWA()">📲 Install App</button>
-                
                 <button class="btn-top" id="btn-printer" style="background:#bdc3c7; border-color:#bdc3c7;" onclick="connectBluetoothPrinter()">🖨️ Printer: Offline</button>
                 <button class="btn-top" style="background:#34495e; border-color:#34495e;" onclick="manualPushSync()">🔄 Sinkron</button>
+                
+                <button class="btn-top" style="background:#9b59b6; border-color:#9b59b6;" onclick="openInboundModal()">📦 Stok Masuk</button>
+                <button class="btn-top" style="background:#34495e; border-color:#34495e;" onclick="openOpnameModal()">📋 Opname</button>
+                
                 <button class="btn-top" id="btn-drawer" style="background:#16a085; border-color:#16a085;" onclick="openCashDrop(false)">🏦 Laci Uang</button>
                 <button class="btn-top" style="background:#8e44ad; border-color:#8e44ad;" onclick="openHistoryModal()">📋 Riwayat</button>
                 <button class="btn-top" id="btn-expense" style="background:#e67e22; border-color:#e67e22;" onclick="openExpenseModal()">💸 Pengeluaran</button>
@@ -422,6 +424,38 @@
             <div style="display:flex; gap:10px; margin-top:20px;">
                 <button onclick="document.getElementById('void-auth-modal').classList.add('hidden')" style="flex:1; padding:15px; border-radius:8px; border:none; font-weight:bold; background:#ecf0f1; cursor:pointer;">Tutup</button>
                 <button onclick="submitVoidRequest()" style="flex:2; padding:15px; border-radius:8px; border:none; font-weight:bold; background:#e74c3c; color:white; cursor:pointer;">Ajukan Void</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="inbound-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-large">
+            <h2 style="margin-top:0;">📦 Konfirmasi Stok Masuk</h2>
+            <p style="color:#7f8c8d; font-size:14px; margin-bottom:15px;">Daftar barang yang dikirim oleh Admin/Gudang. Sesuaikan jumlah yang Anda terima secara fisik sebelum klik Terima.</p>
+            <div id="inbound-list-container" style="max-height:400px; overflow-y:auto; background:#f9f9f9; border-radius:8px; border:1px solid #ddd; padding:10px;"></div>
+            <button onclick="document.getElementById('inbound-modal').classList.add('hidden')" style="width:100%; padding:15px; margin-top:15px; background:#bdc3c7; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Tutup</button>
+        </div>
+    </div>
+
+    <div id="opname-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 style="margin-top:0;">📋 Mini Stock Opname</h2>
+            <p style="color:#7f8c8d; font-size:14px; margin-bottom:15px;">Lakukan penyesuaian stok fisik secara cepat.</p>
+            <div class="form-box">
+                <label>Pilih Item / Barang</label>
+                <select id="opname-item-select" style="font-weight:bold;"></select>
+            </div>
+            <div class="form-box">
+                <label>Jumlah Fisik Aktual</label>
+                <input type="number" id="opname-qty" placeholder="Misal: 45">
+            </div>
+            <div class="form-box">
+                <label>Catatan (Opsional)</label>
+                <input type="text" id="opname-notes" placeholder="Alasan selisih (rusak, hilang, dll)">
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button onclick="document.getElementById('opname-modal').classList.add('hidden')" style="flex:1; padding:15px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Batal</button>
+                <button onclick="submitOpname()" style="flex:2; padding:15px; background:#34495e; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Simpan Opname</button>
             </div>
         </div>
     </div>
