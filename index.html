@@ -106,7 +106,6 @@
             <div style="margin-bottom: 20px; font-size: 14px; color: #7f8c8d; display: flex; flex-direction: column; align-items: center; gap: 10px; background: #f9f9f9; padding: 15px; border-radius: 8px; border: 1px solid #eee;">
                 <div style="display: flex; align-items: center; gap: 8px;"><span class="dot-online" id="login-network-dot" style="background-color: #f39c12;"></span> <strong id="login-network-text">Mengecek koneksi...</strong></div>
                 <button onclick="syncMasterData()" style="background: #3498db; color: white; padding: 8px 15px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%; font-weight: bold;">🔄 Sinkronisasi Paksa</button>
-                
                 <button id="btn-install-login" class="hidden" onclick="installPWA()" style="background: #8e44ad; color: white; padding: 8px 15px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; width: 100%; font-weight: bold;">📲 Install App ke HP/Tablet</button>
             </div>
             <p>Masukkan PIN Kasir</p>
@@ -235,7 +234,7 @@
             </div>
 
             <div style="background:#fff3cd; padding:15px; border-radius:8px; border:1px solid #ffeeba; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:18px; color:#856404; font-weight:bold;">TOTAL TAGIHAN KESELURUHAN:</span> 
+                <span style="font-size:18px; color:#856404; font-weight:bold;">TOTAL TAGIHAN:</span> 
                 <span id="review-grandtotal" style="font-size:24px; color:#c0392b; font-weight:bold;">Rp 0</span>
             </div>
             
@@ -254,7 +253,7 @@
                     <input type="number" id="pay-free" value="0" onclick="this.select()" oninput="calculateRemaining()">
                 </div>
                 <div class="form-box" style="margin-bottom:0;">
-                    <label style="color:#c0392b;">Tunai / Cash (Otomatis Terhitung)</label>
+                    <label style="color:#c0392b;">Tunai / Cash (Otomatis)</label>
                     <input type="number" id="pay-cash" value="0" readonly style="background:#e8f4f8; font-weight:bold; color:#2980b9;">
                 </div>
             </div>
@@ -293,8 +292,7 @@
             <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
                 <button onclick="renderHistoryList('orders')" style="flex:1; padding:10px; cursor:pointer; background:#fff; border:1px solid #ddd; border-radius:4px;">🛍️ Transaksi</button>
                 <button onclick="renderHistoryList('expenses')" style="flex:1; padding:10px; cursor:pointer; background:#fff; border:1px solid #ddd; border-radius:4px;">💸 Pengeluaran</button>
-                <button onclick="renderHistoryList('shifts')" style="flex:1; padding:10px; cursor:pointer; background:#8e44ad; color:white; border:none; border-radius:4px; font-weight:bold;">📊 Riwayat Shift</button>
-                
+                <button onclick="renderHistoryList('shifts')" style="flex:1; padding:10px; cursor:pointer; background:#8e44ad; color:white; border:none; border-radius:4px; font-weight:bold;">📊 Shift</button>
                 <button onclick="renderHistoryList('cashflow')" style="flex:1; padding:10px; cursor:pointer; background:#16a085; color:white; border:none; border-radius:4px; font-weight:bold;">💳 Arus Kas</button>
             </div>
             <div class="history-list" id="history-container" style="max-height:400px; overflow-y:auto; background:#f9f9f9;"></div>
@@ -370,7 +368,6 @@
             </div>
             
             <div style="display: grid; grid-template-columns: 350px 1fr; gap: 20px; align-items: start;">
-                
                 <div style="display: flex; flex-direction: column; gap: 8px;">
                     <div class="revenue-breakdown" style="padding: 10px; margin-bottom: 0;">
                         <div class="revenue-section-title" style="margin-bottom: 5px; font-size: 13px;">📊 Omset & Transaksi (<span id="sr-orders">0</span> Nota)</div>
@@ -414,7 +411,7 @@
             <div style="display:flex; gap:10px; margin-top:15px;">
                 <button onclick="document.getElementById('shift-report-modal').classList.add('hidden')" style="flex:1; padding:12px; border:none; border-radius:8px; font-weight:bold; background:#f1f5f7; color:#2c3e50; cursor:pointer; font-size:14px;">Tutup</button>
                 <button onclick="printCurrentShiftReport()" style="flex:1.2; padding:12px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">🖨️ Cetak Laporan</button>
-                <button onclick="triggerEndShift()" style="flex:1.5; padding:12px; background:#c0392b; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">Akhiri Shift & Simpan Laporan</button>
+                <button id="btn-end-shift" onclick="triggerEndShift()" style="flex:1.5; padding:12px; background:#c0392b; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">Akhiri Shift & Simpan Laporan</button>
             </div>
         </div>
     </div>
@@ -450,7 +447,7 @@
             </div>
             
             <div id="opname-list-container" style="max-height: 400px; overflow-y: auto; background: #f9f9f9; border-radius: 8px; border: 1px solid #ddd; padding: 10px;">
-                </div>
+            </div>
             
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button onclick="document.getElementById('opname-modal').classList.add('hidden')" style="flex:1; padding:15px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Batal</button>
