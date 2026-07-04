@@ -23,6 +23,11 @@ window.globalRecentOrders = [];
 window.globalRecentExpenses = [];
 window.globalRecentShifts = [];
 window.globalPendingInbounds = [];
+window.globalRoomList = [];
+window.globalRecentOrders = [];
+window.globalRecentExpenses = [];
+window.globalRecentShifts = [];
+window.globalRecentDrops = []; // ✅ NEW
 
 let btDevice = null; let btCharacteristic = null;
 window.lastActivityWrite = Date.now();
@@ -926,6 +931,90 @@ window.renderHistoryList = function(type) {
                     <button onclick="printShiftGlobal('${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
                 </div></div>`;
         });
+        
+    } else if (type === 'cashflow') {
+        // ✅ NEW: CALCULATE UNIFIED DEBIT/CREDIT LEDGER
+        let ledger = [];
+        
+        (window.globalRecentOrders || []).forEach(o => {
+            if (o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending") {
+                let payDesc = [];
+                if (o.cashLaundryAmount) payDesc.push("Csh(L): " + o.cashLaundryAmount.toLocaleString('id-ID'));
+                if (o.cashHotelAmount) payDesc.push("Csh(H): " + o.cashHotelAmount.toLocaleString('id-ID'));
+                if (o.qrisAmount) payDesc.push("QRIS: " + o.qrisAmount.toLocaleString('id-ID'));
+                if (o.transferAmount) payDesc.push("Trf: " + o.transferAmount.toLocaleString('id-ID'));
+                
+                ledger.push({
+                    timestamp: new Date(o.timestamp).getTime(), dateStr: o.timestamp, type: "IN",
+                    title: `Penjualan (Kamar ${o.roomNumber})`,
+                    desc: payDesc.join(" | "), amount: o.grandTotal, cashier: o.cashier
+                });
+            }
+        });
+
+        (window.globalRecentExpenses || []).forEach(e => {
+            if (e.status !== "Voided" && e.status !== "Void Pending") {
+                ledger.push({
+                    timestamp: new Date(e.timestamp).getTime(), dateStr: e.timestamp, type: "OUT",
+                    title: `Pengeluaran Laci [${e.drawer}]`,
+                    desc: `${e.category} - ${e.description}`, amount: e.amount, cashier: e.cashier
+                });
+            }
+        });
+
+        (window.globalRecentDrops || []).forEach(d => {
+            ledger.push({
+                timestamp: new Date(d.timestamp).getTime(), dateStr: d.timestamp, type: "OUT",
+                title: `Tarik Uang Laci [${d.drawer}]`,
+                desc: d.notes || "-", amount: d.amount, cashier: d.cashier
+            });
+        });
+
+        if(ledger.length === 0) return container.innerHTML = `<div style="padding:20px; text-align:center;">Belum ada arus kas tercatat.</div>`;
+
+        ledger.sort((a, b) => b.timestamp - a.timestamp); // Sort Newest First
+        
+        let sumIn = 0; let sumOut = 0;
+        ledger.forEach(item => {
+            if (item.type === 'IN') sumIn += item.amount;
+            else sumOut += item.amount;
+        });
+        
+        let html = `
+        <div style="display:flex; justify-content:space-between; background:#2c3e50; color:white; padding:15px; border-radius:8px; margin-bottom:15px;">
+            <div style="text-align:center;">
+                <div style="font-size:12px; opacity:0.8;">Total Uang Masuk</div>
+                <div style="font-weight:bold; color:#2ecc71; font-size:16px;">Rp ${sumIn.toLocaleString('id-ID')}</div>
+            </div>
+            <div style="text-align:center;">
+                <div style="font-size:12px; opacity:0.8;">Pengeluaran & Setor</div>
+                <div style="font-weight:bold; color:#e74c3c; font-size:16px;">Rp ${sumOut.toLocaleString('id-ID')}</div>
+            </div>
+            <div style="text-align:center;">
+                <div style="font-size:12px; opacity:0.8;">Netto Arus Kas</div>
+                <div style="font-weight:bold; font-size:16px;">Rp ${(sumIn - sumOut).toLocaleString('id-ID')}</div>
+            </div>
+        </div>`;
+
+        ledger.forEach(item => {
+            let color = item.type === 'IN' ? '#27ae60' : '#c0392b';
+            let prefix = item.type === 'IN' ? '+' : '-';
+            html += `
+            <div class="history-row" style="align-items: center; border-left: 4px solid ${color};">
+                <div style="flex:1;">
+                    <strong style="font-size:14px; color:#2c3e50;">${item.title}</strong><br>
+                    <small style="color:#7f8c8d;">${formatTimeOnlyWIB(item.dateStr)} | Kasir: ${item.cashier}</small><br>
+                    <small style="color:#34495e;">${item.desc}</small>
+                </div>
+                <div style="text-align: right;">
+                    <strong style="color: ${color}; font-size: 16px;">
+                        ${prefix} Rp ${item.amount.toLocaleString('id-ID')}
+                    </strong>
+                </div>
+            </div>`;
+        });
+        
+        container.innerHTML = html;
     }
 };
 
@@ -958,8 +1047,9 @@ window.syncMasterData = async function(forceAwait = false) {
             window.masterDrawerBalanceHotel = result.masterDrawerBalanceHotel || 0;
             window.globalRecentOrders = result.data.recentOrders || [];
             window.globalRecentExpenses = result.data.recentExpenses || [];
+            window.globalRecentDrops = result.data.recentDrops || []; // ✅ CAPTURE DROPS
             window.globalRecentShifts = result.recentShifts || [];
-            window.globalPendingInbounds = result.data.pendingInbounds || []; // Fetching from Server!
+            window.globalPendingInbounds = result.data.pendingInbounds || [];
             
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
