@@ -241,13 +241,13 @@ window.viewOrderDetailsGlobal = function(orderId) {
     document.getElementById("detail-cashier").innerText = o.cashier;
     document.getElementById("detail-room").innerText = o.roomNumber; 
     
-    // Parse raw text into a beautiful HTML list
     let itemsHtml = "";
     if (o.readableReceipt) {
         let lines = o.readableReceipt.split('\n');
         lines.forEach(line => {
             if(line.trim()) {
-                itemsHtml += `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #eee; color:#2c3e50;">
+                // Adds break-inside avoid so 3-columns don't cut items in half
+                itemsHtml += `<div style="break-inside: avoid; display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed #eee; color:#2c3e50;">
                     <span>${line.replace(/•\s*/, '')}</span>
                 </div>`;
             }
@@ -266,7 +266,6 @@ window.viewOrderDetailsGlobal = function(orderId) {
     
     document.getElementById("btn-print-order-detail").onclick = () => window.printOrderGlobal(o.orderId);
     
-    // Fix z-index so it pops over the history modal
     let detailModal = document.getElementById("order-detail-modal");
     detailModal.style.zIndex = "2500";
     detailModal.classList.remove("hidden");
@@ -1162,8 +1161,11 @@ window.syncMasterData = async function(forceAwait = false) {
             window.masterDrawerBalanceHotel = result.masterDrawerBalanceHotel || 0;
             window.globalRecentOrders = result.data.recentOrders || [];
             window.globalRecentExpenses = result.data.recentExpenses || [];
-            window.globalRecentDrops = result.data.recentDrops || []; // ✅ CAPTURE DROPS
-
+            window.globalRecentDrops = result.data.recentDrops || [];
+            window.globalRecentShifts = result.recentShifts || [];
+            window.globalPendingInbounds = result.data.pendingInbounds || [];
+            
+            // ✅ THE PAY LATER CHECK IS HERE
             window.globalSettings = result.data.settings || {};
             let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() === "TRUE";
             let tabUnpaid = document.getElementById("tab-unpaid-orders");
@@ -1171,11 +1173,8 @@ window.syncMasterData = async function(forceAwait = false) {
                 if(payLaterEnabled) tabUnpaid.classList.remove("hidden");
                 else tabUnpaid.classList.add("hidden");
             }
-            window.extractUnpaidOrders(); // Auto-calculate unpaid orders
-            
-            window.globalRecentShifts = result.recentShifts || [];
-            window.globalPendingInbounds = result.data.pendingInbounds || [];
-            
+            window.extractUnpaidOrders();
+
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
             let p1 = new Promise((resolve) => {
