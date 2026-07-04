@@ -438,21 +438,18 @@
     </div>
 
     <div id="opname-modal" class="modal-overlay hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-large">
             <h2 style="margin-top:0;">📋 Mini Stock Opname</h2>
-            <p style="color:#7f8c8d; font-size:14px; margin-bottom:15px;">Lakukan penyesuaian stok fisik secara cepat.</p>
-            <div class="form-box">
-                <label>Pilih Item / Barang</label>
-                <select id="opname-item-select" style="font-weight:bold;"></select>
-            </div>
-            <div class="form-box">
-                <label>Jumlah Fisik Aktual</label>
-                <input type="number" id="opname-qty" placeholder="Misal: 45">
-            </div>
-            <div class="form-box">
-                <label>Catatan (Opsional)</label>
+            <p style="color:#7f8c8d; font-size:14px; margin-bottom:15px;">Sesuaikan stok fisik yang ada. Biarkan kosong jika tidak ada perubahan.</p>
+            
+            <div id="opname-list-container" style="max-height: 400px; overflow-y: auto; background: #f9f9f9; border-radius: 8px; border: 1px solid #ddd; padding: 10px;">
+                </div>
+            
+            <div class="form-box" style="margin-top: 15px;">
+                <label>Catatan Umum (Opsional)</label>
                 <input type="text" id="opname-notes" placeholder="Alasan selisih (rusak, hilang, dll)">
             </div>
+            
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button onclick="document.getElementById('opname-modal').classList.add('hidden')" style="flex:1; padding:15px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Batal</button>
                 <button onclick="submitOpname()" style="flex:2; padding:15px; background:#34495e; color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Simpan Opname</button>
