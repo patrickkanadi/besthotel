@@ -295,25 +295,21 @@ window.viewShiftDetailsGlobal = function(shiftId) {
     document.getElementById("sr-net-hotel").innerText = "Rp " + (s.netHotel||0).toLocaleString('id-ID');
 
     let foodHtml = "";
-    for (const [locName, categories] of Object.entries(s.foodSummary || {})) {
-        foodHtml += `<div style="break-inside: avoid; margin-bottom: 12px; background: #f9f9f9; padding: 6px; border-radius: 6px; border: 1px solid #eee;">`;
-        foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px;">📍 ${locName}</div>`;
-        for (const [catName, items] of Object.entries(categories)) {
-            foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">📁 ${catName}</div>`;
-            for (const [name, qty] of Object.entries(items)) {
-                let qtyStr = (qty % 1 !== 0) ? Number(qty).toFixed(2) : qty;
-                foodHtml += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
-            }
-        }
-        foodHtml += `</div>`;
+    if (typeof s.foodSummary === 'string') {
+        let lines = s.foodSummary.split('\n');
+        lines.forEach(line => {
+            if(line.trim()) foodHtml += `<div style="padding:4px 0; border-bottom:1px dashed #eee; font-size:12px; color:#2c3e50;">${line}</div>`;
+        });
     }
     document.getElementById("sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
     
-    // Hide End Shift button if viewing history
     const endBtn = document.getElementById("btn-end-shift");
     if(endBtn) endBtn.classList.add("hidden");
 
-    document.getElementById("shift-report-modal").classList.remove("hidden");
+    // ✅ FIX THE MODAL OVERLAP ISSUE HERE
+    let shiftModal = document.getElementById("shift-report-modal");
+    shiftModal.style.zIndex = "2000"; // Forces the modal to jump to the very front
+    shiftModal.classList.remove("hidden");
 };
 
 window.printShiftGlobal = async function(shiftId) {
@@ -914,7 +910,7 @@ window.renderHistoryList = function(type) {
                 </div></div>`;
         });
         
-    } else if (type === 'shifts') {
+        } else if (type === 'shifts') {
         const shiftsToDisplay = window.globalRecentShifts || [];
         if(shiftsToDisplay.length === 0) { return container.innerHTML = `<div style="padding:20px; text-align:center;">Belum ada histori shift di sistem server.</div>`; }
         
@@ -922,10 +918,14 @@ window.renderHistoryList = function(type) {
             let badge = s.status === "Voided" ? `<span class="status-badge status-voided">Dibatalkan</span>` : s.status === "Void Pending" ? `<span class="status-badge status-pending">Menunggu Admin</span>` : ``;
             let btnBatal = (s.status !== "Voided" && s.status !== "Void Pending") ? `<button onclick="requestVoid('shifts', '${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #e74c3c; background:#f8d7da; color:#721c24; margin-right:5px;">❌ Batal</button>` : '';
 
+            // ✅ PISAHKAN OMSET HOTEL & LAUNDRY DI SINI
             container.innerHTML += `<div class="history-row" style="align-items:flex-start;">
                 <div><strong>Shift: ${s.shiftId}</strong><br><small style="color:#7f8c8d;">Kasir: ${s.cashier} | Keluar: ${formatWIB(s.logoutTime)}</small><br>${badge}</div>
                 <div style="display:flex; text-align:right; align-items:center;">
-                    <div><strong style="margin-right:15px;">Omset: Rp ${(s.totalOmset || 0).toLocaleString('id-ID')}</strong></div>
+                    <div style="margin-right:15px; text-align:right; font-size:13px; border-right:2px solid #eee; padding-right:15px;">
+                        <div style="color:#e67e22; margin-bottom:4px;"><strong>Hotel:</strong> Rp ${(s.omsetHotel || 0).toLocaleString('id-ID')}</div>
+                        <div style="color:#2980b9;"><strong>Lndry:</strong> Rp ${(s.omsetLaundry || 0).toLocaleString('id-ID')}</div>
+                    </div>
                     ${btnBatal}
                     <button onclick="viewShiftDetailsGlobal('${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff; margin-right:5px;">👁️ Detail</button>
                     <button onclick="printShiftGlobal('${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
