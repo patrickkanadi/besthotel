@@ -28,6 +28,9 @@ window.globalRecentOrders = [];
 window.globalRecentExpenses = [];
 window.globalRecentShifts = [];
 window.globalRecentDrops = []; // ✅ NEW
+window.globalSettings = {};
+window.activeUnpaidOrders = [];
+window.settlementMode = 'complete';
 
 let btDevice = null; let btCharacteristic = null;
 window.lastActivityWrite = Date.now();
@@ -379,15 +382,23 @@ window.switchWorkspace = function(type) {
     document.querySelectorAll('.ws-tab').forEach(b => b.classList.remove('active'));
     document.getElementById("main-workspace-wrapper").classList.add("hidden");
     document.getElementById("active-tickets-workspace").classList.add("hidden");
+    let uWs = document.getElementById("unpaid-workspace");
+    if(uWs) uWs.classList.add("hidden");
+    
     if (type === 'new') {
         document.getElementById("tab-new-order").classList.add("active");
         document.getElementById("main-workspace-wrapper").classList.remove("hidden");
-    } else {
+    } else if (type === 'tickets') {
         document.getElementById("tab-active-tickets").classList.add("active");
         document.getElementById("active-tickets-workspace").classList.remove("hidden");
         window.renderActiveTickets(); 
+    } else if (type === 'unpaid') {
+        document.getElementById("tab-unpaid-orders").classList.add("active");
+        if(uWs) uWs.classList.remove("hidden");
+        window.renderUnpaidOrders();
     }
 };
+
 window.lockScreen = function() { window.location.reload(); };
 
 // 4. ANTREAN, KAMAR
@@ -723,7 +734,16 @@ window.finalizeOrder = async function(shouldPrint) {
     let transfer = Number(document.getElementById("pay-transfer").value) || 0;
     let free = Number(document.getElementById("pay-free").value) || 0;
     
-    if ((window.cartGrandTotal - (cashL + cashH + qris + transfer)) > 0) return alert("⚠️ Pembayaran Belum Cukup!");
+    let totalPaid = cashL + cashH + qris + transfer + free;
+    let payLaterEnabled = window.globalSettings && String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() === "TRUE";
+
+    if ((window.cartGrandTotal - totalPaid) > 0) {
+        if (!payLaterEnabled) {
+            return alert("⚠️ Pembayaran Belum Cukup!");
+        } else {
+            if (!confirm("⚠️ Pembayaran kurang dari Total Tagihan.\n\nSimpan sebagai tagihan Belum Lunas (Piutang)?")) return;
+        }
+    }
 
     if (shouldPrint && !btCharacteristic) {
         alert("⚠️ Printer belum terhubung! Nota batal dicetak, namun transaksi tetap akan diselesaikan dan direkam ke sistem. (Sambungkan printer di menu atas)");
@@ -731,19 +751,18 @@ window.finalizeOrder = async function(shouldPrint) {
     }
 
     let roomNumber = antreans[currentAntreanIndex].room || "Tamu Umum";
-    
     let hasTicketItem = currentCart.some(i => i.workflow === "TICKET");
     let finalStatus = hasTicketItem ? "Processing" : "Completed";
 
-    // ✅ Note: guestName and guestPhone are gone. The Backend does it automatically now.
     const orderPayload = {
         orderId: "ORD-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId,
-        roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, 
+        roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, readableReceipt: currentCart.map(i => `${i.qty}x ${i.name}`).join('\n'),
         subtotal: window.cartSubtotal, discounts: free, grandTotal: window.cartGrandTotal,
         paymentMethod: "Split", cashLaundryAmount: cashL, cashHotelAmount: cashH, qrisAmount: qris, transferAmount: transfer, freeAmount: free, syncStatus: "Pending" 
     };
 
     db.transaction(["orders"], "readwrite").objectStore("orders").add(orderPayload);
+    window.globalRecentOrders.unshift(orderPayload); // Optimistic UI update
     
     if (finalStatus === "Processing") {
         activeLaundryTickets.push(orderPayload);
@@ -751,11 +770,11 @@ window.finalizeOrder = async function(shouldPrint) {
     }
 
     if (shouldPrint && typeof window.buildEscPosReceipt === "function") {
-        await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, (cashL + cashH + qris + transfer), 0, "Split");
+        await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, totalPaid, window.cartGrandTotal - totalPaid, "Split");
     }
     
     let mod = document.getElementById("review-modal"); if(mod) mod.classList.add("hidden");
-    window.lockMenu(); renderProductGrid(); window.runBackgroundSync();
+    window.lockMenu(); renderProductGrid(); window.extractUnpaidOrders(); window.runBackgroundSync();
 };
 
 window.renderActiveTickets = function() {
@@ -788,34 +807,66 @@ window.markTicketReady = function(orderId) {
     }
 };
 
-window.openSettlement = function(orderId, remainingDue) {
-    activeSettlementTicket = activeLaundryTickets.find(t => t.orderId === orderId);
+window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) {
+    activeSettlementTicket = window.globalRecentOrders.find(t => t.orderId === orderId);
+    if(!activeSettlementTicket) activeSettlementTicket = activeLaundryTickets.find(t => t.orderId === orderId);
+    if(!activeSettlementTicket) return alert("Order tidak ditemukan!");
+
     if (remainingDue <= 0) {
-        if(confirm("Tagihan ini sudah LUNAS. Tandai selesai?")) {
+        if(confirm("Tagihan ini sudah LUNAS. Tandai selesai dan Ambil Layanan?")) {
             activeSettlementTicket.orderStatus = "Completed"; 
             activeSettlementTicket.syncStatus = "Pending";
             db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
             activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
-            window.renderActiveTickets(); window.runBackgroundSync();
+            window.renderActiveTickets(); 
+            window.extractUnpaidOrders();
+            window.runBackgroundSync();
             activeSettlementTicket = null;
         }
         return; 
     }
+    
     let elAmt = document.getElementById("settle-amount"); if(elAmt) elAmt.innerText = `Rp ${remainingDue.toLocaleString('id-ID')}`;
     let elCash = document.getElementById("settle-cash"); if(elCash) elCash.value = remainingDue;
+    
+    // Set rule: If opened from Unpaid tab, it's just paying off debt. If from Active Services, it forces Completion.
+    window.settlementMode = isFromUnpaid ? 'payOnly' : 'complete';
+    
     document.getElementById("settlement-modal").classList.remove("hidden");
 };
 
 window.confirmSettlement = function() {
     if (!activeSettlementTicket) return;
-    const c = Number(document.getElementById("settle-cash").value) || 0; const q = Number(document.getElementById("settle-qris").value) || 0; const t = Number(document.getElementById("settle-transfer").value) || 0;
+    const c = Number(document.getElementById("settle-cash").value) || 0; 
+    const q = Number(document.getElementById("settle-qris").value) || 0; 
+    const t = Number(document.getElementById("settle-transfer").value) || 0;
     
-    activeSettlementTicket.cashHotelAmount += c; activeSettlementTicket.qrisAmount += q; activeSettlementTicket.transferAmount += t;
-    activeSettlementTicket.orderStatus = "Completed"; activeSettlementTicket.syncStatus = "Pending";
+    // Accumulate the payments directly to the ticket memory
+    activeSettlementTicket.cashHotelAmount = (activeSettlementTicket.cashHotelAmount || 0) + c; 
+    activeSettlementTicket.qrisAmount = (activeSettlementTicket.qrisAmount || 0) + q; 
+    activeSettlementTicket.transferAmount = (activeSettlementTicket.transferAmount || 0) + t;
     
+    if (window.settlementMode === 'complete') {
+        activeSettlementTicket.orderStatus = "Completed"; 
+        activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
+    }
+    
+    activeSettlementTicket.syncStatus = "Pending";
     db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
-    activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
-    document.getElementById("settlement-modal").classList.add("hidden"); window.renderActiveTickets(); window.runBackgroundSync();
+    
+    // Refresh global history
+    let go = window.globalRecentOrders.find(o => o.orderId === activeSettlementTicket.orderId);
+    if (go) {
+        go.cashHotelAmount = activeSettlementTicket.cashHotelAmount;
+        go.qrisAmount = activeSettlementTicket.qrisAmount;
+        go.transferAmount = activeSettlementTicket.transferAmount;
+        go.orderStatus = activeSettlementTicket.orderStatus;
+    }
+
+    document.getElementById("settlement-modal").classList.add("hidden"); 
+    window.renderActiveTickets(); 
+    window.extractUnpaidOrders();
+    window.runBackgroundSync();
 };
 
 window.openExpenseModal = function() { 
@@ -1071,6 +1122,16 @@ window.syncMasterData = async function(forceAwait = false) {
             window.globalRecentOrders = result.data.recentOrders || [];
             window.globalRecentExpenses = result.data.recentExpenses || [];
             window.globalRecentDrops = result.data.recentDrops || []; // ✅ CAPTURE DROPS
+
+            window.globalSettings = result.data.settings || {};
+            let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() === "TRUE";
+            let tabUnpaid = document.getElementById("tab-unpaid-orders");
+            if(tabUnpaid) {
+                if(payLaterEnabled) tabUnpaid.classList.remove("hidden");
+                else tabUnpaid.classList.add("hidden");
+            }
+            window.extractUnpaidOrders(); // Auto-calculate unpaid orders
+            
             window.globalRecentShifts = result.recentShifts || [];
             window.globalPendingInbounds = result.data.pendingInbounds || [];
             
@@ -1103,6 +1164,45 @@ window.syncMasterData = async function(forceAwait = false) {
         console.error(e);
         if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; 
     }
+};
+
+window.extractUnpaidOrders = function() {
+    window.activeUnpaidOrders = window.globalRecentOrders.filter(o => {
+        if(o.orderStatus === "Voided" || o.orderStatus === "Void Pending") return false;
+        let paid = (o.cashLaundryAmount||0) + (o.cashHotelAmount||0) + (o.qrisAmount||0) + (o.transferAmount||0) + (o.discounts||0);
+        return Math.round(o.grandTotal) > Math.round(paid);
+    });
+    
+    let uc = document.getElementById("unpaid-count");
+    if(uc) uc.innerText = window.activeUnpaidOrders.length;
+    
+    let uWs = document.getElementById("unpaid-workspace");
+    if (uWs && !uWs.classList.contains("hidden")) window.renderUnpaidOrders();
+};
+
+window.renderUnpaidOrders = function() {
+    const grid = document.getElementById("unpaid-grid-container"); if(!grid) return;
+    grid.innerHTML = "";
+    if(window.activeUnpaidOrders.length === 0) {
+        grid.innerHTML = `<p style="color:#7f8c8d;">Tidak ada tagihan tertunggak.</p>`; return;
+    }
+    
+    window.activeUnpaidOrders.forEach((order) => {
+        let paid = (order.cashLaundryAmount||0) + (order.cashHotelAmount||0) + (order.qrisAmount||0) + (order.transferAmount||0) + (order.discounts||0);
+        const remaining = order.grandTotal - paid;
+        let receiptText = order.readableReceipt || "Rincian tidak tersedia";
+        
+        let buttonsHtml = `<button class="ticket-btn" style="background:#e74c3c;" onclick="window.openSettlement('${order.orderId}', ${remaining}, true)">💰 Lunasi / Cicil Tagihan</button>`;
+        
+        grid.innerHTML += `<div class="ticket-card" style="border-left-color: #e74c3c;">
+            <div class="ticket-header"><span>Kamar: ${order.roomNumber}</span> <span style="color:#7f8c8d; font-size:12px;">${order.orderId}</span></div>
+            <div style="font-size:14px; margin-bottom:10px; white-space:pre-wrap;">${receiptText}</div>
+            <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:10px; border-top:1px dashed #ddd; padding-top:5px;">
+                <span>Kekurangan:</span> <strong style="color:#e74c3c;">Rp ${remaining.toLocaleString('id-ID')}</strong>
+            </div>
+            ${buttonsHtml}
+        </div>`;
+    });
 };
 
 window.manualPushSync = async function() { await window.runBackgroundSync(); await window.syncMasterData(); alert("Sinkronisasi Database Berhasil!"); };
