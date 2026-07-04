@@ -132,8 +132,8 @@
 
         <div id="workspace-tabs">
             <button class="ws-tab active" id="tab-new-order" onclick="switchWorkspace('new')">🛒 Order Baru</button>
-            <button class="ws-tab" id="tab-unpaid" onclick="switchWorkspace('unpaid')">⏳ Belum Lunas (<span id="unpaid-count">0</span>)</button>
-            <button class="ws-tab" id="tab-active-tickets" onclick="switchWorkspace('tickets')">🧺 Layanan Aktif (<span id="ticket-count">0</span>)</button>
+            <button class="ws-tab" id="tab-active-tickets" onclick="switchWorkspace('tickets')">📋 Layanan Aktif (<span id="ticket-count">0</span>)</button>
+            <button class="ws-tab hidden" id="tab-unpaid-orders" onclick="switchWorkspace('unpaid')" style="color: #e74c3c;">⏳ Belum Lunas (<span id="unpaid-count">0</span>)</button>
         </div>
 
         <div id="main-workspace-wrapper" class="hidden">
@@ -192,8 +192,8 @@
             </div>
         </div>
 
-        <div id="unpaid-workspace" class="hidden" style="background:#f4f7f6; overflow-y:auto;">
-            <h2 style="margin:20px; color:#c0392b;">Transaksi Belum Lunas (Bayar Nanti)</h2>
+        <div id="unpaid-workspace" class="hidden" style="flex: 1; padding: 20px; background: #fdf5f5; overflow-y: auto;">
+            <h2 style="margin-top:0; color: #c0392b;">Tagihan Belum Lunas (Piutang)</h2>
             <div class="ticket-grid" id="unpaid-grid-container"></div>
         </div>
 
@@ -270,24 +270,24 @@
     </div>
     
     <div id="settlement-modal" class="modal-overlay hidden">
-        <div class="modal-content" style="max-width: 400px;">
-            <h2 style="margin-top:0;">💰 Selesaikan Pembayaran</h2>
-            <div style="font-size:24px; font-weight:bold; color:#c0392b; text-align:center; margin-bottom:15px; padding:10px; background:#f9f9f9; border-radius:8px;">Tagihan: <span id="settle-amount">Rp 0</span></div>
-            
+        <div class="modal-content">
+            <h2 style="margin-top:0;">💰 Pelunasan Tagihan</h2>
+            <div style="font-size:24px; color:#e74c3c; font-weight:bold; margin-bottom:15px; text-align:center;">Sisa: <span id="settle-amount">Rp 0</span></div>
             <div class="form-box">
-                <label>Pilih Laci untuk Tunai (Jika Ada)</label>
-                <select id="settle-cash-drawer" style="font-weight:bold; color:#2c3e50;">
-                    <option value="Hotel">Laci Hotel</option>
-                    <option value="Laundry">Laci Laundry</option>
-                </select>
+                <label>Tunai (Hotel/Laundry)</label>
+                <input type="number" id="settle-cash" value="0" onclick="this.select()">
             </div>
-            <div class="form-box"><label>Tunai / Cash</label><input type="number" id="settle-cash" value="0" onclick="this.select()"></div>
-            <div class="form-box"><label>QRIS (Masuk Laci Laundry)</label><input type="number" id="settle-qris" value="0" onclick="this.select()"></div>
-            <div class="form-box"><label>Transfer (Masuk Laci Hotel)</label><input type="number" id="settle-transfer" value="0" onclick="this.select()"></div>
-            
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button onclick="document.getElementById('settlement-modal').classList.add('hidden')" style="flex:1; padding:15px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold;">Batal</button>
-                <button onclick="confirmSettlement()" style="flex:2; padding:15px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold;">Simpan & Lunas</button>
+            <div class="form-box">
+                <label>QRIS (Khusus Laundry)</label>
+                <input type="number" id="settle-qris" value="0" onclick="this.select()">
+            </div>
+            <div class="form-box">
+                <label>Transfer (Khusus Hotel)</label>
+                <input type="number" id="settle-transfer" value="0" onclick="this.select()">
+            </div>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button onclick="document.getElementById('settlement-modal').classList.add('hidden')" style="flex:1; padding:12px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold;">Batal</button>
+                <button onclick="confirmSettlement()" style="flex:2; padding:12px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold;">Konfirmasi Pembayaran</button>
             </div>
         </div>
     </div>
