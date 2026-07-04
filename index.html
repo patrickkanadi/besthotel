@@ -116,25 +116,25 @@
     </div>
 
     <div id="pos-screen" class="hidden">
-        <div id="top-bar">
+       <div id="top-bar">
             <div><strong>Kasir:</strong> <span id="display-cashier">---</span></div>
             <div class="status-indicator">
                 <span class="dot-online" id="network-dot"></span><span id="network-text" style="margin-right: 10px;">Memuat...</span>
                 <button class="btn-top hidden" id="btn-install" style="background:#2980b9; border-color:#2980b9;" onclick="installPWA()">📲 Install App</button>
                 <button class="btn-top" id="btn-printer" style="background:#bdc3c7; border-color:#bdc3c7;" onclick="connectBluetoothPrinter()">🖨️ Printer: Offline</button>
                 <button class="btn-top" style="background:#34495e; border-color:#34495e;" onclick="manualPushSync()">🔄 Sinkron</button>
-                
                 <button class="btn-top" style="background:#9b59b6; border-color:#9b59b6;" onclick="openInboundModal()">📦 Stok Masuk</button>
                 <button class="btn-top" style="background:#34495e; border-color:#34495e;" onclick="openOpnameModal()">📋 Opname</button>
-                
                 <button class="btn-top" id="btn-drawer" style="background:#16a085; border-color:#16a085;" onclick="openCashDrop(false)">🏦 Laci Uang</button>
                 <button class="btn-top" style="background:#8e44ad; border-color:#8e44ad;" onclick="openHistoryModal()">📋 Riwayat</button>
                 <button class="btn-top" id="btn-expense" style="background:#e67e22; border-color:#e67e22;" onclick="openExpenseModal()">💸 Pengeluaran</button>
-                <button class="btn-top" style="background:#2980b9; border-color:#2980b9;" onclick="openShiftReport()">📊 Shift</button>
+                
+                <button class="btn-top" id="btn-shift-top" style="background:#2980b9; border-color:#2980b9;" onclick="openShiftReport()">📊 Shift</button>
+                
                 <button class="btn-top" style="background:#7f8c8d; border-color:#7f8c8d;" onclick="lockScreen()">🔒 Kunci</button>
             </div>
         </div>
-
+        
         <div id="workspace-tabs">
             <button class="ws-tab active" id="tab-new-order" onclick="switchWorkspace('new')">🛒 Order Baru</button>
             <button class="ws-tab" id="tab-active-tickets" onclick="switchWorkspace('tickets')">📋 Layanan Aktif (<span id="ticket-count">0</span>)</button>
@@ -440,15 +440,15 @@
     <div id="opname-modal" class="modal-overlay hidden">
         <div class="modal-content modal-large">
             <h2 style="margin-top:0;">📋 Mini Stock Opname</h2>
-            <p style="color:#7f8c8d; font-size:14px; margin-bottom:15px;">Sesuaikan stok fisik yang ada. Biarkan kosong jika tidak ada perubahan.</p>
+            
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <select id="opname-filter-loc" onchange="filterOpnameList()" style="padding:8px; border-radius:4px; flex:1; border: 1px solid #ccc;"></select>
+                <select id="opname-filter-cat" onchange="filterOpnameList()" style="padding:8px; border-radius:4px; flex:1; border: 1px solid #ccc;"></select>
+                <input type="text" id="opname-search" placeholder="Cari item..." oninput="filterOpnameList()" style="padding:8px; border-radius:4px; flex:1; border: 1px solid #ccc;">
+            </div>
             
             <div id="opname-list-container" style="max-height: 400px; overflow-y: auto; background: #f9f9f9; border-radius: 8px; border: 1px solid #ddd; padding: 10px;">
                 </div>
-            
-            <div class="form-box" style="margin-top: 15px;">
-                <label>Catatan Umum (Opsional)</label>
-                <input type="text" id="opname-notes" placeholder="Alasan selisih (rusak, hilang, dll)">
-            </div>
             
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button onclick="document.getElementById('opname-modal').classList.add('hidden')" style="flex:1; padding:15px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Batal</button>
