@@ -1117,36 +1117,57 @@ window.confirmInboundItem = function(index, inboundId) {
 };
 
 // ==========================================
-// STOCK OPNAME
-// ==========================================
-// ==========================================
 // STOCK OPNAME (TABULAR)
 // ==========================================
 window.openOpnameModal = function() {
     const container = document.getElementById("opname-list-container");
-    container.innerHTML = "";
-    
     let trackableItems = globalMenuData.filter(m => m.trackStock);
+    
+    trackableItems.sort((a, b) => {
+        if (a.location !== b.location) return a.location.localeCompare(b.location);
+        if (a.category !== b.category) return a.category.localeCompare(b.category);
+        return a.name.localeCompare(b.name);
+    });
+
+    const locs = [...new Set(trackableItems.map(m => m.location))];
+    const cats = [...new Set(trackableItems.map(m => m.category))];
+    
+    let locHtml = `<option value="">Semua Lokasi</option>`;
+    locs.forEach(l => locHtml += `<option value="${l}">${l}</option>`);
+    document.getElementById("opname-filter-loc").innerHTML = locHtml;
+
+    let catHtml = `<option value="">Semua Kategori</option>`;
+    cats.forEach(c => catHtml += `<option value="${c}">${c}</option>`);
+    document.getElementById("opname-filter-cat").innerHTML = catHtml;
+    
+    document.getElementById("opname-search").value = "";
+
     if (trackableItems.length === 0) {
         container.innerHTML = `<div style="text-align:center; padding: 20px; color:#7f8c8d;">Tidak ada item yang dilacak stoknya.</div>`;
     } else {
-        let html = `<table style="width:100%; border-collapse: collapse; font-size: 14px;">
+        let html = `<table style="width:100%; border-collapse: collapse; font-size: 13px;">
             <thead>
                 <tr style="background: #2c3e50; color: white; text-align: left;">
-                    <th style="padding: 10px; border-radius: 6px 0 0 0;">Nama Item</th>
-                    <th style="padding: 10px; text-align: center;">Stok Sistem</th>
-                    <th style="padding: 10px; text-align: center; border-radius: 0 6px 0 0;">Fisik Aktual</th>
+                    <th style="padding: 10px; border-radius: 6px 0 0 0;">Lokasi & Kategori</th>
+                    <th style="padding: 10px;">Nama Item</th>
+                    <th style="padding: 10px; text-align: center;">Sistem</th>
+                    <th style="padding: 10px; text-align: center;">Fisik</th>
+                    <th style="padding: 10px; border-radius: 0 6px 0 0;">Catatan</th>
                 </tr>
             </thead>
             <tbody>`;
         
         trackableItems.forEach((m, index) => {
             html += `
-                <tr style="border-bottom: 1px solid #ddd; background: ${index % 2 === 0 ? '#fff' : '#fcfcfc'};">
+                <tr class="opname-row" data-loc="${m.location}" data-cat="${m.category}" data-name="${m.name.toLowerCase()}" style="border-bottom: 1px solid #ddd; background: ${index % 2 === 0 ? '#fff' : '#fcfcfc'};">
+                    <td style="padding: 10px; color: #7f8c8d; font-size:11px;">${m.location} <br> <strong>${m.category}</strong></td>
                     <td style="padding: 10px; color: #2980b9; font-weight: bold;">${m.name}</td>
                     <td style="padding: 10px; text-align: center; font-weight: bold;">${m.currentStock}</td>
                     <td style="padding: 10px; text-align: center;">
-                        <input type="number" id="opname-input-${index}" placeholder="${m.currentStock}" style="width: 80px; padding: 8px; text-align: center; border: 1px solid #bdc3c7; border-radius: 4px; font-weight: bold;">
+                        <input type="number" id="opn-qty-${m.itemId}" placeholder="${m.currentStock}" style="width: 70px; padding: 6px; text-align: center; border: 1px solid #bdc3c7; border-radius: 4px; font-weight: bold;">
+                    </td>
+                    <td style="padding: 10px;">
+                        <input type="text" id="opn-note-${m.itemId}" placeholder="Catatan..." style="width: 100%; padding: 6px; border: 1px solid #bdc3c7; border-radius: 4px;">
                     </td>
                 </tr>`;
         });
@@ -1154,32 +1175,48 @@ window.openOpnameModal = function() {
         container.innerHTML = html;
     }
     
-    document.getElementById("opname-notes").value = "";
+    window.filterOpnameList();
     document.getElementById("opname-modal").classList.remove("hidden");
 };
 
+window.filterOpnameList = function() {
+    let locFilter = document.getElementById("opname-filter-loc").value;
+    let catFilter = document.getElementById("opname-filter-cat").value;
+    let search = document.getElementById("opname-search").value.toLowerCase();
+    
+    let rows = document.querySelectorAll(".opname-row");
+    rows.forEach(row => {
+        let rLoc = row.getAttribute("data-loc");
+        let rCat = row.getAttribute("data-cat");
+        let rName = row.getAttribute("data-name");
+        
+        let show = true;
+        if (locFilter && rLoc !== locFilter) show = false;
+        if (catFilter && rCat !== catFilter) show = false;
+        if (search && !rName.includes(search)) show = false;
+        
+        row.style.display = show ? "" : "none";
+    });
+};
+
 window.submitOpname = function() {
-    let notes = document.getElementById("opname-notes").value || "-";
     let trackableItems = globalMenuData.filter(m => m.trackStock);
     let changesMade = 0;
     
-    trackableItems.forEach((m, index) => {
-        let inputEl = document.getElementById(`opname-input-${index}`);
-        if (inputEl && inputEl.value !== "") { // Only process if they actually typed a number
-            let physStock = Number(inputEl.value);
+    trackableItems.forEach((m) => {
+        let qtyEl = document.getElementById(`opn-qty-${m.itemId}`);
+        let noteEl = document.getElementById(`opn-note-${m.itemId}`);
+        
+        if (qtyEl && qtyEl.value !== "") {
+            let physStock = Number(qtyEl.value);
             let diff = physStock - m.currentStock;
+            let note = noteEl ? noteEl.value.trim() : "";
+            if (!note) note = "-";
             
             if (diff !== 0) {
                 let payload = { 
-                    opnameId: "OPN-" + Date.now() + "-" + index, 
-                    timestamp: new Date().toISOString(), 
-                    cashier: currentCashier, 
-                    itemName: m.name, 
-                    systemStock: m.currentStock, 
-                    physicalStock: physStock, 
-                    difference: diff, 
-                    notes: notes, 
-                    syncStatus: "Pending" 
+                    opnameId: "OPN-" + Date.now() + "-" + m.itemId, timestamp: new Date().toISOString(), cashier: currentCashier, 
+                    itemName: m.name, systemStock: m.currentStock, physicalStock: physStock, difference: diff, notes: note, syncStatus: "Pending" 
                 };
                 db.transaction(["stock_opnames"], "readwrite").objectStore("stock_opnames").add(payload);
                 m.currentStock = physStock; // Update local memory immediately
@@ -1188,9 +1225,7 @@ window.submitOpname = function() {
         }
     });
     
-    if (changesMade === 0) {
-        return alert("Tidak ada perubahan stok fisik yang dimasukkan.");
-    }
+    if (changesMade === 0) return alert("Tidak ada perubahan stok fisik yang dimasukkan.");
     
     document.getElementById("opname-modal").classList.add("hidden");
     alert(`${changesMade} item stok berhasil diperbarui!`);
@@ -1201,18 +1236,25 @@ window.submitOpname = function() {
 window.openShiftReport = async function() {
     if (!db || !currentShiftId) return alert("Anda belum membuka shift kasir.");
     
+    let btn = document.getElementById("btn-shift-top");
+    let originalText = btn ? btn.innerText : "📊 Shift";
+    if (btn) btn.innerText = "⏳ Sinkronisasi...";
+    
+    // GUARANTEE DRAWER ACCURACY: Push local changes, pull exact Setting numbers
+    await window.runBackgroundSync();
+    await window.syncMasterData(true);
+    
+    if (btn) btn.innerText = originalText;
+
     let activeOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
     let activeExpenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
     let activeDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
 
-    let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId);
-    let shiftExpenses = activeExpenses.filter(e => e.shiftId === currentShiftId);
+    let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
+    let shiftExpenses = activeExpenses.filter(e => e.shiftId === currentShiftId && e.status !== "Voided" && e.status !== "Void Pending");
     let shiftDrops = activeDrops.filter(d => d.shiftId === currentShiftId);
     
-    let tOrders = 0; let tFree = 0;
-    let omsetL = 0; let omsetH = 0;
-    let cashL = 0; let cashH = 0;
-    let qrisL = 0; let transferH = 0;
+    let tOrders = 0; let tFree = 0; let omsetL = 0; let omsetH = 0; let cashL = 0; let cashH = 0; let qrisL = 0; let transferH = 0;
     let foodSummary = {};
     
     shiftOrders.forEach(o => {
@@ -1240,7 +1282,6 @@ window.openShiftReport = async function() {
         else expH += e.amount;
     });
     
-    // NEW: Deducting Tarik Uang from Shift calculation!
     let dropL = 0; let dropH = 0;
     shiftDrops.forEach(d => {
         if (d.drawer === 'Laundry') dropL += d.amount;
@@ -1253,14 +1294,10 @@ window.openShiftReport = async function() {
 
     window.currentShiftData = { 
         shiftId: currentShiftId, loginTime: currentLoginTime, logoutTime: new Date().toISOString(), cashier: currentCashier, 
-        totalOrders: tOrders, totalFree: tFree, 
-        omsetLaundry: omsetL, omsetHotel: omsetH,
-        cashLaundry: cashL, cashHotel: cashH,
-        qrisLaundry: qrisL, transferHotel: transferH,
-        expLaundry: expL, expHotel: expH,
-        dropLaundry: dropL, dropHotel: dropH,
-        netLaundry: netL, netHotel: netH,
-        foodSummary: foodSummary
+        totalOrders: tOrders, totalFree: tFree, omsetLaundry: omsetL, omsetHotel: omsetH,
+        cashLaundry: cashL, cashHotel: cashH, qrisLaundry: qrisL, transferHotel: transferH,
+        expLaundry: expL, expHotel: expH, dropLaundry: dropL, dropHotel: dropH,
+        netLaundry: netL, netHotel: netH, foodSummary: foodSummary
     };
     
     if (document.getElementById("sr-orders")) document.getElementById("sr-orders").innerText = tOrders;
@@ -1273,11 +1310,12 @@ window.openShiftReport = async function() {
     if (document.getElementById("sr-qris-laundry")) document.getElementById("sr-qris-laundry").innerText = "Rp " + qrisL.toLocaleString('id-ID');
     if (document.getElementById("sr-transfer-hotel")) document.getElementById("sr-transfer-hotel").innerText = "Rp " + transferH.toLocaleString('id-ID');
 
-    if (document.getElementById("sr-exp-laundry")) document.getElementById("sr-exp-laundry").innerText = "Rp " + (expL + dropL).toLocaleString('id-ID'); // Shows total removed from drawer
+    if (document.getElementById("sr-exp-laundry")) document.getElementById("sr-exp-laundry").innerText = "Rp " + (expL + dropL).toLocaleString('id-ID');
     if (document.getElementById("sr-exp-hotel")) document.getElementById("sr-exp-hotel").innerText = "Rp " + (expH + dropH).toLocaleString('id-ID');
 
-    if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + netL.toLocaleString('id-ID');
-    if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + netH.toLocaleString('id-ID');
+    // 👉 PERFECT SYNC UI: We pull EXACTLY what the Google Sheet Settings says
+    if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + window.masterDrawerBalanceLaundry.toLocaleString('id-ID');
+    if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + window.masterDrawerBalanceHotel.toLocaleString('id-ID');
 
     let foodHtml = "";
     for (const [locName, categories] of Object.entries(foodSummary)) {
