@@ -22,6 +22,7 @@ window.globalRoomList = [];
 window.globalRecentOrders = [];
 window.globalRecentExpenses = [];
 window.globalRecentShifts = [];
+window.globalPendingInbounds = [];
 
 let btDevice = null; let btCharacteristic = null;
 window.lastActivityWrite = Date.now();
@@ -29,7 +30,7 @@ window.lastActivityWrite = Date.now();
 // 1. INIT DB
 function initDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        const request = indexedDB.open(DB_NAME, 6); // Bumped Version
         request.onupgradeneeded = (event) => {
             db = event.target.result;
             if (!db.objectStoreNames.contains("staff")) db.createObjectStore("staff", { keyPath: "pin" });
@@ -43,6 +44,9 @@ function initDB() {
             if (!db.objectStoreNames.contains("expense_categories")) db.createObjectStore("expense_categories", { keyPath: "name" });
             if (!db.objectStoreNames.contains("void_requests")) db.createObjectStore("void_requests", { keyPath: "id" });
             if (!db.objectStoreNames.contains("local_shift_history")) db.createObjectStore("local_shift_history", { keyPath: "shiftId" });
+            // NEW TABLES
+            if (!db.objectStoreNames.contains("stock_inbounds")) db.createObjectStore("stock_inbounds", { keyPath: "inboundId" });
+            if (!db.objectStoreNames.contains("stock_opnames")) db.createObjectStore("stock_opnames", { keyPath: "opnameId" });
         };
         request.onsuccess = (e) => { db = e.target.result; resolve(db); };
         request.onerror = (e) => { reject(e); };
@@ -943,8 +947,7 @@ window.syncMasterData = async function(forceAwait = false) {
     
     try {
         const response = await fetch(`${API_URL}?t=${Date.now()}`, { 
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            method: 'GET', headers: { 'Accept': 'application/json' }
         }); 
         
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
@@ -956,8 +959,8 @@ window.syncMasterData = async function(forceAwait = false) {
             window.globalRecentOrders = result.data.recentOrders || [];
             window.globalRecentExpenses = result.data.recentExpenses || [];
             window.globalRecentShifts = result.recentShifts || [];
+            window.globalPendingInbounds = result.data.pendingInbounds || []; // Fetching from Server!
             
-            // ✅ REVERTED TO SIMPLE ARRAY OF STRINGS
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
             let p1 = new Promise((resolve) => {
@@ -982,13 +985,10 @@ window.syncMasterData = async function(forceAwait = false) {
                 };
             });
             if(forceAwait) await p1; 
-        } else {
-             throw new Error(result.message || "Unknown Server Error");
-        }
+        } else { throw new Error(result.message || "Unknown Server Error"); }
     } catch (e) { 
         console.error(e);
         if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; 
-        if(forceAwait) alert("Gagal menghubungi server Google. Pastikan Web App di-deploy dengan 'Execute as: Me' dan 'Who has access: Anyone'.\n\nDetail: " + e.message);
     }
 };
 
@@ -1042,102 +1042,221 @@ window.runBackgroundSync = async function() {
             } catch(e) {}
         }
 
+        let inbounds = await new Promise(res => db.transaction(["stock_inbounds"], "readonly").objectStore("stock_inbounds").getAll().onsuccess = e => res(e.target.result));
+        for (const inb of inbounds) {
+            try {
+                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "confirmInbound", data: inb }) });
+                db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").delete(inb.inboundId);
+            } catch(e) {}
+        }
+
+        let opnames = await new Promise(res => db.transaction(["stock_opnames"], "readonly").objectStore("stock_opnames").getAll().onsuccess = e => res(e.target.result));
+        for (const opn of opnames) {
+            try {
+                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncOpname", data: opn }) });
+                db.transaction(["stock_opnames"], "readwrite").objectStore("stock_opnames").delete(opn.opnameId);
+            } catch(e) {}
+        }
+
     } finally { isSyncing = false; }
 };
 
-window.openShiftReport = function() {
+// ==========================================
+// STOCK INBOUND CONFIRMATION
+// ==========================================
+window.openInboundModal = function() {
+    const container = document.getElementById("inbound-list-container");
+    container.innerHTML = "";
+    if (window.globalPendingInbounds.length === 0) {
+        container.innerHTML = `<div style="padding:20px; text-align:center; color:#7f8c8d;">Tidak ada pengiriman stok yang tertunda.</div>`;
+    } else {
+        window.globalPendingInbounds.forEach((inb, index) => {
+            container.innerHTML += `
+            <div class="history-row" style="margin-bottom:10px; border-radius:6px; border:1px solid #eee; padding:15px;">
+                <div style="flex:1;">
+                    <strong style="color:#2980b9; font-size:16px;">${inb.itemName}</strong><br>
+                    <small style="color:#7f8c8d;">Dari: ${inb.sender} | Dikirim: ${inb.qtySent}</small><br>
+                    <small style="color:#e67e22;">Catatan: ${inb.notes || "-"}</small>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; background:#f4f7f6; padding:8px; border-radius:8px;">
+                    <button onclick="adjInbQty(${index}, -1)" style="padding:8px 12px; background:#e74c3c; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">-</button>
+                    <input type="number" id="inb-qty-${index}" value="${inb.qtySent}" style="width:60px; text-align:center; padding:8px; border:1px solid #ccc; border-radius:4px; font-weight:bold;">
+                    <button onclick="adjInbQty(${index}, 1)" style="padding:8px 12px; background:#2ecc71; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">+</button>
+                    <button onclick="confirmInboundItem(${index}, '${inb.inboundId}')" style="padding:10px 15px; background:#34495e; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-left:10px;">Terima</button>
+                </div>
+            </div>`;
+        });
+    }
+    document.getElementById("inbound-modal").classList.remove("hidden");
+};
+
+window.adjInbQty = function(index, delta) {
+    let input = document.getElementById(`inb-qty-${index}`);
+    let current = Number(input.value) || 0;
+    input.value = Math.max(0, current + delta);
+};
+
+window.confirmInboundItem = function(index, inboundId) {
+    let actualQty = Number(document.getElementById(`inb-qty-${index}`).value) || 0;
+    let inbItem = window.globalPendingInbounds.find(x => x.inboundId === inboundId);
+    if (!inbItem) return;
+    
+    if(!confirm(`Anda yakin menerima fisik ${actualQty}x ${inbItem.itemName}?`)) return;
+
+    let payload = { inboundId: inboundId, qtyReceived: actualQty, cashier: currentCashier, syncStatus: "Pending" };
+    db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").add(payload);
+    
+    // Update local cache & UI immediately
+    let mItem = globalMenuData.find(m => m.name === inbItem.itemName);
+    if(mItem) mItem.currentStock += actualQty;
+    
+    window.globalPendingInbounds = window.globalPendingInbounds.filter(x => x.inboundId !== inboundId);
+    window.openInboundModal(); // Refresh modal
+    window.renderProductGrid(); // Refresh stock UI
+    window.runBackgroundSync();
+};
+
+// ==========================================
+// STOCK OPNAME
+// ==========================================
+window.openOpnameModal = function() {
+    const select = document.getElementById("opname-item-select");
+    select.innerHTML = '<option value="">-- Pilih Item --</option>';
+    
+    globalMenuData.filter(m => m.trackStock).forEach(m => {
+        select.innerHTML += `<option value="${m.itemId}">${m.name} (Sistem: ${m.currentStock})</option>`;
+    });
+    
+    document.getElementById("opname-qty").value = "";
+    document.getElementById("opname-notes").value = "";
+    document.getElementById("opname-modal").classList.remove("hidden");
+};
+
+window.submitOpname = function() {
+    let itemId = document.getElementById("opname-item-select").value;
+    let physStock = document.getElementById("opname-qty").value;
+    let notes = document.getElementById("opname-notes").value || "-";
+    
+    if(!itemId || physStock === "") return alert("Pilih item dan masukkan stok fisik.");
+    physStock = Number(physStock);
+    
+    let mItem = globalMenuData.find(m => m.itemId === itemId);
+    if(!mItem) return;
+    
+    let diff = physStock - mItem.currentStock;
+    if(!confirm(`Opname: ${mItem.name}\nStok Sistem: ${mItem.currentStock}\nFisik: ${physStock}\nSelisih: ${diff}\n\nLanjutkan?`)) return;
+    
+    let payload = { opnameId: "OPN-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, itemName: mItem.name, systemStock: mItem.currentStock, physicalStock: physStock, difference: diff, notes: notes, syncStatus: "Pending" };
+    db.transaction(["stock_opnames"], "readwrite").objectStore("stock_opnames").add(payload);
+    
+    mItem.currentStock = physStock; // Update local memory immediately
+    
+    document.getElementById("opname-modal").classList.add("hidden");
+    alert("Stok berhasil diperbarui!");
+    window.renderProductGrid();
+    window.runBackgroundSync();
+};
+
+window.openShiftReport = async function() {
     if (!db || !currentShiftId) return alert("Anda belum membuka shift kasir.");
-    let tx = db.transaction(["orders", "expenses"], "readonly");
-    let activeOrders = []; let activeExpenses = [];
-    tx.objectStore("orders").getAll().onsuccess = (ev) => { activeOrders = ev.target.result; };
-    tx.objectStore("expenses").getAll().onsuccess = (ev) => { activeExpenses = ev.target.result; };
+    
+    let activeOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
+    let activeExpenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
+    let activeDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
 
-    tx.oncomplete = () => {
-        let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId);
-        let shiftExpenses = activeExpenses.filter(e => e.shiftId === currentShiftId);
+    let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId);
+    let shiftExpenses = activeExpenses.filter(e => e.shiftId === currentShiftId);
+    let shiftDrops = activeDrops.filter(d => d.shiftId === currentShiftId);
+    
+    let tOrders = 0; let tFree = 0;
+    let omsetL = 0; let omsetH = 0;
+    let cashL = 0; let cashH = 0;
+    let qrisL = 0; let transferH = 0;
+    let foodSummary = {};
+    
+    shiftOrders.forEach(o => {
+        tOrders++; tFree += (o.discounts || 0);
+        cashL += (o.cashLaundryAmount || 0); cashH += (o.cashHotelAmount || 0);
+        qrisL += (o.qrisAmount || 0); transferH += (o.transferAmount || 0);
         
-        let tOrders = 0; let tFree = 0;
-        let omsetL = 0; let omsetH = 0;
-        let cashL = 0; let cashH = 0;
-        let qrisL = 0; let transferH = 0;
-        let foodSummary = {};
-        
-        shiftOrders.forEach(o => {
-            tOrders++; tFree += (o.discounts || 0);
-            cashL += (o.cashLaundryAmount || 0); cashH += (o.cashHotelAmount || 0);
-            qrisL += (o.qrisAmount || 0); transferH += (o.transferAmount || 0);
+        let orderOmsetL = 0; let orderOmsetH = 0;
+        if (o.items) o.items.forEach(i => { 
+            let lineTotal = i.qty * i.price;
+            if(i.location && i.location.toLowerCase().includes('laundry')) orderOmsetL += lineTotal;
+            else orderOmsetH += lineTotal;
             
-            let orderOmsetL = 0; let orderOmsetH = 0;
-            if (o.items) o.items.forEach(i => { 
-                let lineTotal = i.qty * i.price;
-                if(i.location && i.location.toLowerCase().includes('laundry')) orderOmsetL += lineTotal;
-                else orderOmsetH += lineTotal;
-                
-                let loc = i.location || "Lainnya"; let cat = i.category || "Lainnya";
-                if(!foodSummary[loc]) foodSummary[loc] = {};
-                if(!foodSummary[loc][cat]) foodSummary[loc][cat] = {};
-                foodSummary[loc][cat][i.name] = (foodSummary[loc][cat][i.name] || 0) + i.qty;
-            });
-            omsetL += orderOmsetL; omsetH += orderOmsetH;
+            let loc = i.location || "Lainnya"; let cat = i.category || "Lainnya";
+            if(!foodSummary[loc]) foodSummary[loc] = {};
+            if(!foodSummary[loc][cat]) foodSummary[loc][cat] = {};
+            foodSummary[loc][cat][i.name] = (foodSummary[loc][cat][i.name] || 0) + i.qty;
         });
+        omsetL += orderOmsetL; omsetH += orderOmsetH;
+    });
 
-        let expL = 0; let expH = 0;
-        shiftExpenses.forEach(e => {
-            if (e.drawer === 'Laundry') expL += e.amount;
-            else expH += e.amount;
-        });
+    let expL = 0; let expH = 0;
+    shiftExpenses.forEach(e => {
+        if (e.drawer === 'Laundry') expL += e.amount;
+        else expH += e.amount;
+    });
+    
+    // NEW: Deducting Tarik Uang from Shift calculation!
+    let dropL = 0; let dropH = 0;
+    shiftDrops.forEach(d => {
+        if (d.drawer === 'Laundry') dropL += d.amount;
+        else dropH += d.amount;
+    });
 
-        let netL = Math.max(0, cashL - expL);
-        let netH = Math.max(0, cashH - expH);
+    // Uang fisik aktual = Cash Masuk - Expense - Uang Ditarik ke Admin/Bank
+    let netL = cashL - expL - dropL;
+    let netH = cashH - expH - dropH;
 
-        window.currentShiftData = { 
-            shiftId: currentShiftId, loginTime: currentLoginTime, logoutTime: new Date().toISOString(), cashier: currentCashier, 
-            totalOrders: tOrders, totalFree: tFree, 
-            omsetLaundry: omsetL, omsetHotel: omsetH,
-            cashLaundry: cashL, cashHotel: cashH,
-            qrisLaundry: qrisL, transferHotel: transferH,
-            expLaundry: expL, expHotel: expH,
-            netLaundry: netL, netHotel: netH,
-            foodSummary: foodSummary
-        };
-        
-        if (document.getElementById("sr-orders")) document.getElementById("sr-orders").innerText = tOrders;
-        if (document.getElementById("sr-omset-laundry")) document.getElementById("sr-omset-laundry").innerText = "Rp " + omsetL.toLocaleString('id-ID');
-        if (document.getElementById("sr-omset-hotel")) document.getElementById("sr-omset-hotel").innerText = "Rp " + omsetH.toLocaleString('id-ID');
-        if (document.getElementById("sr-discounts")) document.getElementById("sr-discounts").innerText = "-Rp " + tFree.toLocaleString('id-ID');
-        
-        if (document.getElementById("sr-cash-laundry")) document.getElementById("sr-cash-laundry").innerText = "Rp " + cashL.toLocaleString('id-ID');
-        if (document.getElementById("sr-cash-hotel")) document.getElementById("sr-cash-hotel").innerText = "Rp " + cashH.toLocaleString('id-ID');
-        if (document.getElementById("sr-qris-laundry")) document.getElementById("sr-qris-laundry").innerText = "Rp " + qrisL.toLocaleString('id-ID');
-        if (document.getElementById("sr-transfer-hotel")) document.getElementById("sr-transfer-hotel").innerText = "Rp " + transferH.toLocaleString('id-ID');
-
-        if (document.getElementById("sr-exp-laundry")) document.getElementById("sr-exp-laundry").innerText = "Rp " + expL.toLocaleString('id-ID');
-        if (document.getElementById("sr-exp-hotel")) document.getElementById("sr-exp-hotel").innerText = "Rp " + expH.toLocaleString('id-ID');
-
-        if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + netL.toLocaleString('id-ID');
-        if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + netH.toLocaleString('id-ID');
-
-        let foodHtml = "";
-        for (const [locName, categories] of Object.entries(foodSummary)) {
-            foodHtml += `<div style="break-inside: avoid; margin-bottom: 12px; background: #f9f9f9; padding: 6px; border-radius: 6px; border: 1px solid #eee;">`;
-            foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px;">📍 ${locName}</div>`;
-            for (const [catName, items] of Object.entries(categories)) {
-                foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">📁 ${catName}</div>`;
-                for (const [name, qty] of Object.entries(items)) {
-                    let qtyStr = (qty % 1 !== 0) ? Number(qty).toFixed(2) : qty;
-                    foodHtml += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
-                }
-            }
-            foodHtml += `</div>`;
-        }
-        if (document.getElementById("sr-items-summary")) document.getElementById("sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
-
-        // Make sure the End Shift button is ALWAYS visible here
-        const endBtn = document.getElementById("btn-end-shift");
-        if(endBtn) endBtn.classList.remove("hidden");
-
-        document.getElementById("shift-report-modal").classList.remove("hidden");
+    window.currentShiftData = { 
+        shiftId: currentShiftId, loginTime: currentLoginTime, logoutTime: new Date().toISOString(), cashier: currentCashier, 
+        totalOrders: tOrders, totalFree: tFree, 
+        omsetLaundry: omsetL, omsetHotel: omsetH,
+        cashLaundry: cashL, cashHotel: cashH,
+        qrisLaundry: qrisL, transferHotel: transferH,
+        expLaundry: expL, expHotel: expH,
+        dropLaundry: dropL, dropHotel: dropH,
+        netLaundry: netL, netHotel: netH,
+        foodSummary: foodSummary
     };
+    
+    if (document.getElementById("sr-orders")) document.getElementById("sr-orders").innerText = tOrders;
+    if (document.getElementById("sr-omset-laundry")) document.getElementById("sr-omset-laundry").innerText = "Rp " + omsetL.toLocaleString('id-ID');
+    if (document.getElementById("sr-omset-hotel")) document.getElementById("sr-omset-hotel").innerText = "Rp " + omsetH.toLocaleString('id-ID');
+    if (document.getElementById("sr-discounts")) document.getElementById("sr-discounts").innerText = "-Rp " + tFree.toLocaleString('id-ID');
+    
+    if (document.getElementById("sr-cash-laundry")) document.getElementById("sr-cash-laundry").innerText = "Rp " + cashL.toLocaleString('id-ID');
+    if (document.getElementById("sr-cash-hotel")) document.getElementById("sr-cash-hotel").innerText = "Rp " + cashH.toLocaleString('id-ID');
+    if (document.getElementById("sr-qris-laundry")) document.getElementById("sr-qris-laundry").innerText = "Rp " + qrisL.toLocaleString('id-ID');
+    if (document.getElementById("sr-transfer-hotel")) document.getElementById("sr-transfer-hotel").innerText = "Rp " + transferH.toLocaleString('id-ID');
+
+    if (document.getElementById("sr-exp-laundry")) document.getElementById("sr-exp-laundry").innerText = "Rp " + (expL + dropL).toLocaleString('id-ID'); // Shows total removed from drawer
+    if (document.getElementById("sr-exp-hotel")) document.getElementById("sr-exp-hotel").innerText = "Rp " + (expH + dropH).toLocaleString('id-ID');
+
+    if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + netL.toLocaleString('id-ID');
+    if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + netH.toLocaleString('id-ID');
+
+    let foodHtml = "";
+    for (const [locName, categories] of Object.entries(foodSummary)) {
+        foodHtml += `<div style="break-inside: avoid; margin-bottom: 12px; background: #f9f9f9; padding: 6px; border-radius: 6px; border: 1px solid #eee;">`;
+        foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px;">📍 ${locName}</div>`;
+        for (const [catName, items] of Object.entries(categories)) {
+            foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">📁 ${catName}</div>`;
+            for (const [name, qty] of Object.entries(items)) {
+                let qtyStr = (qty % 1 !== 0) ? Number(qty).toFixed(2) : qty;
+                foodHtml += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
+            }
+        }
+        foodHtml += `</div>`;
+    }
+    if (document.getElementById("sr-items-summary")) document.getElementById("sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
+
+    const endBtn = document.getElementById("btn-end-shift");
+    if(endBtn) endBtn.classList.remove("hidden");
+
+    document.getElementById("shift-report-modal").classList.remove("hidden");
 };
 
 window.printCurrentShiftReport = async function() {
