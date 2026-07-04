@@ -221,13 +221,39 @@ window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, p
     const encoder = new TextEncoder(); await sendToPrinter(encoder.encode(receipt));
 };
 
+window.updateTabLabels = function() {
+    const btns = document.querySelectorAll(".antrean-btn");
+    btns.forEach((btn, i) => {
+        let prefix = (i === 0) ? "1️⃣" : (i === 1) ? "2️⃣" : "3️⃣";
+        let room = antreans[i].room;
+        // Extact just the Room/Name (Ignore long WA numbers) so the button doesn't stretch
+        let displayName = room ? room.split('(')[0].trim().substring(0, 10) : "Order";
+        btn.innerText = `${prefix} ${displayName}`;
+    });
+};
+
 window.viewOrderDetailsGlobal = function(orderId) {
     let o = window.globalRecentOrders.find(x => x.orderId === orderId);
     if(!o) return;
+    
     document.getElementById("detail-id").innerText = o.orderId;
     document.getElementById("detail-time").innerText = formatWIB(o.timestamp);
     document.getElementById("detail-cashier").innerText = o.cashier;
-    document.getElementById("detail-items").innerText = o.readableReceipt;
+    document.getElementById("detail-room").innerText = o.roomNumber; 
+    
+    // Parse raw text into a beautiful HTML list
+    let itemsHtml = "";
+    if (o.readableReceipt) {
+        let lines = o.readableReceipt.split('\n');
+        lines.forEach(line => {
+            if(line.trim()) {
+                itemsHtml += `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed #eee; color:#2c3e50;">
+                    <span>${line.replace(/•\s*/, '')}</span>
+                </div>`;
+            }
+        });
+    }
+    document.getElementById("detail-items").innerHTML = itemsHtml || "Belum ada item tercatat";
     
     document.getElementById("detail-subtotal").innerText = "Rp " + o.subtotal.toLocaleString('id-ID');
     document.getElementById("detail-discount").innerText = "-Rp " + o.discounts.toLocaleString('id-ID');
@@ -239,7 +265,11 @@ window.viewOrderDetailsGlobal = function(orderId) {
     document.getElementById("detail-transfer").innerText = "Rp " + o.transferAmount.toLocaleString('id-ID');
     
     document.getElementById("btn-print-order-detail").onclick = () => window.printOrderGlobal(o.orderId);
-    document.getElementById("order-detail-modal").classList.remove("hidden");
+    
+    // Fix z-index so it pops over the history modal
+    let detailModal = document.getElementById("order-detail-modal");
+    detailModal.style.zIndex = "2500";
+    detailModal.classList.remove("hidden");
 };
 
 window.printOrderGlobal = function(orderId) {
@@ -413,9 +443,13 @@ window.switchAntrean = function(index) {
     currentCart = [...antreans[currentAntreanIndex].cart]; 
     isMenuLocked = antreans[currentAntreanIndex].isLocked;
     
+    
     if (ri) ri.value = antreans[currentAntreanIndex].room;
-
+    
+    window.updateTabLabels(); // <--- ADD THIS LINE HERE
+    
     document.querySelectorAll(".antrean-btn").forEach((btn, i) => {
+
         if (i === index) { btn.classList.add("active"); btn.style.background = "#fff"; btn.style.color = "#2980b9"; } 
         else { btn.classList.remove("active"); btn.style.background = "#bdc3c7"; btn.style.color = "#fff"; }
     });
@@ -445,9 +479,13 @@ window.lockMenu = function() {
     let gl = document.getElementById("glass-overlay"); if(gl) { gl.style.opacity = "1"; gl.style.pointerEvents = "auto"; }
     let ri = document.getElementById("room-input"); if(ri) ri.value = ""; 
     
+    // ... existing code inside lockMenu
     currentCart = []; 
     antreans[currentAntreanIndex] = { cart: [], room: "", isLocked: true };
+    
+    window.updateTabLabels(); // <--- ADD THIS LINE HERE
     window.renderCart();
+// ...
 };
 
 function proceedToUnlock(room) {
@@ -461,7 +499,10 @@ function proceedToUnlock(room) {
     
     antreans[currentAntreanIndex].isLocked = false; 
     antreans[currentAntreanIndex].room = room; 
+    
+    window.updateTabLabels(); // <--- ADD THIS LINE HERE
     window.renderCart();
+// ...
 }
 
 window.unlockMenu = function(isGuest) {
