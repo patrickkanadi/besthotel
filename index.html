@@ -25,7 +25,7 @@
         .ws-tab { padding: 12px 25px; border: none; background: #bdc3c7; border-radius: 8px 8px 0 0; font-weight: bold; font-size: 16px; cursor: pointer; margin-right: 5px; flex-shrink: 0; }
         .ws-tab.active { background: white; color: #2980b9; border-top: 3px solid #3498db; }
 
-        #main-workspace-wrapper { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+        #main-workspace-wrapper, #active-tickets-workspace, #unpaid-workspace { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
         #main-workspace { display: flex; flex-direction: row; flex: 1; overflow: hidden; }
         
         #menu-section { flex: 6; display: flex; flex-direction: column; border-right: 2px solid #ddd; background: #fff; overflow: hidden; position: relative;}
@@ -64,10 +64,10 @@
         .grand-total { font-size: 24px; font-weight: bold; color: #e74c3c; display: flex; justify-content: space-between;}
         .btn-pay { background: #27ae60; color: white; padding: 15px; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 15px; }
 
-        #active-tickets-workspace { flex: 1; padding: 20px; background: #f4f7f6; overflow-y: auto; }
-        .ticket-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
+        .ticket-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; padding: 20px; overflow-y: auto; }
         .ticket-card { background: white; padding: 15px; border-radius: 8px; border-left: 5px solid #f39c12; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .ticket-card.ready { border-left-color: #2ecc71; }
+        .ticket-card.unpaid { border-left-color: #e74c3c; }
         .ticket-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         .ticket-btn { padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 10px; color: white; text-align: center; }
 
@@ -94,8 +94,6 @@
         .revenue-breakdown { background: #fff; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
         .revenue-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #eee; font-size: 14px; }
         .revenue-section-title { font-weight: bold; color: #2c3e50; margin-bottom: 10px; border-bottom: 2px solid #eee; padding-bottom: 5px; }
-
-        button:disabled, .btn-disabled { background-color: #dcdde1 !important; color: #7f8c8d !important; border-color: #dcdde1 !important; cursor: not-allowed !important; opacity: 0.6; }
     </style>
 </head>
 <body>
@@ -134,7 +132,8 @@
 
         <div id="workspace-tabs">
             <button class="ws-tab active" id="tab-new-order" onclick="switchWorkspace('new')">🛒 Order Baru</button>
-            <button class="ws-tab" id="tab-active-tickets" onclick="switchWorkspace('tickets')">📋 Layanan Aktif (<span id="ticket-count">0</span>)</button>
+            <button class="ws-tab" id="tab-unpaid" onclick="switchWorkspace('unpaid')">⏳ Belum Lunas (<span id="unpaid-count">0</span>)</button>
+            <button class="ws-tab" id="tab-active-tickets" onclick="switchWorkspace('tickets')">🧺 Layanan Aktif (<span id="ticket-count">0</span>)</button>
         </div>
 
         <div id="main-workspace-wrapper" class="hidden">
@@ -156,7 +155,7 @@
                         
                         <div id="active-customer-banner" class="hidden">
                             <div style="font-size:16px; color:#2c3e50; font-weight:bold;">
-                                🚪 Kamar: <span id="active-room-display">---</span> 
+                                🚪 <span id="active-room-display">---</span> 
                             </div>
                             <div style="display:flex; gap:10px;">
                                 <button onclick="lockMenu()" style="background:#e74c3c; color:white; border:none; padding:8px 12px; border-radius:6px; font-weight:bold; cursor:pointer;">Ganti / Kunci</button>
@@ -193,8 +192,13 @@
             </div>
         </div>
 
-        <div id="active-tickets-workspace" class="hidden">
-            <h2 style="margin-top:0;">Layanan Dalam Proses</h2>
+        <div id="unpaid-workspace" class="hidden" style="background:#f4f7f6; overflow-y:auto;">
+            <h2 style="margin:20px; color:#c0392b;">Transaksi Belum Lunas (Bayar Nanti)</h2>
+            <div class="ticket-grid" id="unpaid-grid-container"></div>
+        </div>
+
+        <div id="active-tickets-workspace" class="hidden" style="background:#f4f7f6; overflow-y:auto;">
+            <h2 style="margin:20px;">Layanan Laundry Dalam Proses</h2>
             <div class="ticket-grid" id="ticket-grid-container"></div>
         </div>
     </div>
@@ -232,11 +236,11 @@
             </div>
 
             <div style="background:#fff3cd; padding:15px; border-radius:8px; border:1px solid #ffeeba; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:18px; color:#856404; font-weight:bold;">TOTAL TAGIHAN KESELURUHAN:</span> 
+                <span style="font-size:18px; color:#856404; font-weight:bold;">TOTAL TAGIHAN:</span> 
                 <span id="review-grandtotal" style="font-size:24px; color:#c0392b; font-weight:bold;">Rp 0</span>
             </div>
             
-            <p style="font-weight:bold; color:#2c3e50; margin-bottom:5px;">💵 Metode Pembayaran (Wajib Lunas)</p>
+            <p style="font-weight:bold; color:#2c3e50; margin-bottom:5px;">💵 Metode Pembayaran (Jika Langsung Lunas)</p>
             <div class="split-pay-grid">
                 <div class="form-box" style="margin-bottom:0;">
                     <label>QRIS (Khusus Laundry)</label>
@@ -258,8 +262,32 @@
             
             <div style="display: flex; gap: 10px; flex-wrap:wrap; margin-top:20px;">
                 <button onclick="closeReview()" style="flex:1; padding:15px; background:#bdc3c7; border:none; border-radius:8px; font-weight:bold;">Kembali</button>
-                <button onclick="finalizeOrder(false)" style="flex:1; padding:15px; background:#f39c12; color:white; border:none; border-radius:8px; font-weight:bold;">Simpan (Tanpa Struk)</button>
-                <button onclick="finalizeOrder(true)" style="flex:2; padding:15px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold;">🖨️ Simpan & Cetak</button>
+                <button id="btn-pay-later" onclick="finalizeOrder(false, true)" style="flex:1; padding:15px; background:#e74c3c; color:white; border:none; border-radius:8px; font-weight:bold;">⏳ Bayar Nanti</button>
+                <button onclick="finalizeOrder(false)" style="flex:1.5; padding:15px; background:#f39c12; color:white; border:none; border-radius:8px; font-weight:bold;">Simpan Saja</button>
+                <button onclick="finalizeOrder(true)" style="flex:2; padding:15px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold;">🖨️ Simpan & Cetak Lunas</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="settlement-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 400px;">
+            <h2 style="margin-top:0;">💰 Selesaikan Pembayaran</h2>
+            <div style="font-size:24px; font-weight:bold; color:#c0392b; text-align:center; margin-bottom:15px; padding:10px; background:#f9f9f9; border-radius:8px;">Tagihan: <span id="settle-amount">Rp 0</span></div>
+            
+            <div class="form-box">
+                <label>Pilih Laci untuk Tunai (Jika Ada)</label>
+                <select id="settle-cash-drawer" style="font-weight:bold; color:#2c3e50;">
+                    <option value="Hotel">Laci Hotel</option>
+                    <option value="Laundry">Laci Laundry</option>
+                </select>
+            </div>
+            <div class="form-box"><label>Tunai / Cash</label><input type="number" id="settle-cash" value="0" onclick="this.select()"></div>
+            <div class="form-box"><label>QRIS (Masuk Laci Laundry)</label><input type="number" id="settle-qris" value="0" onclick="this.select()"></div>
+            <div class="form-box"><label>Transfer (Masuk Laci Hotel)</label><input type="number" id="settle-transfer" value="0" onclick="this.select()"></div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button onclick="document.getElementById('settlement-modal').classList.add('hidden')" style="flex:1; padding:15px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold;">Batal</button>
+                <button onclick="confirmSettlement()" style="flex:2; padding:15px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold;">Simpan & Lunas</button>
             </div>
         </div>
     </div>
@@ -377,13 +405,7 @@
                 <input type="text" id="opname-search" placeholder="Cari item..." oninput="filterOpnameList()" style="padding:8px; border-radius:4px; flex:1; border: 1px solid #ccc;">
             </div>
             
-            <div id="opname-list-container" style="max-height: 400px; overflow-y: auto; background: #f9f9f9; border-radius: 8px; border: 1px solid #ddd; padding: 10px;">
-                </div>
-            
-            <div class="form-box" style="margin-top: 15px;">
-                <label>Catatan Umum (Opsional)</label>
-                <input type="text" id="opname-notes" placeholder="Alasan selisih (rusak, hilang, dll)">
-            </div>
+            <div id="opname-list-container" style="max-height: 400px; overflow-y: auto; background: #f9f9f9; border-radius: 8px; border: 1px solid #ddd; padding: 10px;"></div>
             
             <div style="display: flex; gap: 10px; margin-top: 20px;">
                 <button onclick="document.getElementById('opname-modal').classList.add('hidden')" style="flex:1; padding:15px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Batal</button>
@@ -393,7 +415,7 @@
     </div>
 
     <div id="history-modal" class="modal-overlay hidden">
-        <div class="modal-content modal-large">
+        <div class="modal-content modal-large" style="z-index: 1000;">
             <h2 style="margin-top:0;">📋 Riwayat Sistem Global</h2>
             <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
                 <button onclick="renderHistoryList('orders')" style="flex:1; padding:10px; cursor:pointer; background:#fff; border:1px solid #ddd; border-radius:4px;">🛍️ Transaksi</button>
@@ -406,7 +428,7 @@
         </div>
     </div>
 
-    <div id="order-detail-modal" class="modal-overlay hidden">
+    <div id="order-detail-modal" class="modal-overlay hidden" style="z-index: 2000;">
         <div class="modal-content">
             <h2 style="margin-top:0;">🧾 Detail Transaksi</h2>
             <div style="font-size:12px; color:#7f8c8d; margin-bottom:10px;">ID: <span id="detail-id"></span> | Kasir: <span id="detail-cashier"></span><br>Waktu: <span id="detail-time"></span></div>
@@ -430,7 +452,7 @@
         </div>
     </div>
 
-    <div id="expense-detail-modal" class="modal-overlay hidden">
+    <div id="expense-detail-modal" class="modal-overlay hidden" style="z-index: 2000;">
         <div class="modal-content">
             <h2 style="margin-top:0;">💸 Detail Pengeluaran</h2>
             <div style="font-size:12px; color:#7f8c8d; margin-bottom:15px;">ID: <span id="exp-det-id"></span> | Waktu: <span id="exp-det-time"></span></div>
@@ -448,7 +470,7 @@
         </div>
     </div>
 
-    <div id="void-auth-modal" class="modal-overlay hidden">
+    <div id="void-auth-modal" class="modal-overlay hidden" style="z-index: 3000;">
         <div class="modal-content" style="max-width: 350px; text-align:center;">
             <h2 style="margin-top:0; color:#e74c3c;">⚠️ Batalkan Data</h2>
             <p style="color:#7f8c8d; font-size:14px;">Data akan ditandai "Void Pending" dan menunggu persetujuan Admin.<br><br>Admin harus mengetik 'ok' atau 'batal' pada kolom Void Auth di Google Sheets.</p>
