@@ -733,58 +733,70 @@ window.openReview = function() {
 };
 window.closeReview = function() { let reviewModal = document.getElementById("review-modal"); if (reviewModal) { reviewModal.classList.add("hidden"); } };
 
-window.calculateRemaining = function() {
-    let f = Number(document.getElementById("pay-free").value) || 0;
-    let q = Number(document.getElementById("pay-qris").value) || 0;
-    let t = Number(document.getElementById("pay-transfer").value) || 0;
+window.calculateRemaining = function(manualCash = false) {
+    let free = Number(document.getElementById("pay-free").value) || 0;
+    let qris = Number(document.getElementById("pay-qris").value) || 0;
+    let trans = Number(document.getElementById("pay-transfer").value) || 0;
 
-    // Strict limitations
-    if (q > window.cartLaundryTotal) { q = window.cartLaundryTotal; document.getElementById("pay-qris").value = q; }
-    if (t > window.cartHotelTotal) { t = window.cartHotelTotal; document.getElementById("pay-transfer").value = t; }
+    let remLaundry = Math.max(0, window.cartLaundryTotal - qris);
+    let remHotel = Math.max(0, window.cartHotelTotal - trans);
 
-    let remLaundry = window.cartLaundryTotal - q;
-    let remHotel = window.cartHotelTotal - t;
-
-    let discountLeft = f;
+    let discountLeft = free;
     if (remHotel >= discountLeft) {
-        remHotel -= discountLeft; discountLeft = 0;
+        remHotel -= discountLeft;
     } else {
-        discountLeft -= remHotel; remHotel = 0;
+        discountLeft -= remHotel;
+        remHotel = 0;
         remLaundry = Math.max(0, remLaundry - discountLeft);
     }
 
-    window.cashLaundryAmount = remLaundry;
-    window.cashHotelAmount = remHotel;
-
     let requiredCash = remLaundry + remHotel;
-    document.getElementById("pay-cash").value = requiredCash;
-
-    window.cartGrandTotal = Math.max(0, window.cartSubtotal - f);
+    window.cartGrandTotal = Math.max(0, window.cartSubtotal - free);
+    
     let rgt = document.getElementById("review-grandtotal");
     if(rgt) rgt.innerText = `Rp ${window.cartGrandTotal.toLocaleString('id-ID')}`;
+
+    if (!manualCash) {
+        window.cashLaundryAmount = remLaundry;
+        window.cashHotelAmount = remHotel;
+        document.getElementById("pay-cash").value = requiredCash.toFixed(0);
+    } else {
+        let actualCash = Number(document.getElementById("pay-cash").value) || 0;
+        if (actualCash >= requiredCash) {
+            window.cashLaundryAmount = remLaundry;
+            window.cashHotelAmount = remHotel + (actualCash - requiredCash);
+        } else {
+            if (actualCash >= remHotel) {
+                window.cashHotelAmount = remHotel;
+                window.cashLaundryAmount = actualCash - remHotel;
+            } else {
+                window.cashHotelAmount = actualCash;
+                window.cashLaundryAmount = 0;
+            }
+        }
+    }
 };
 
 window.finalizeOrder = async function(shouldPrint) {
-    window.calculateRemaining(); 
-
-    let cashL = window.cashLaundryAmount || 0; let cashH = window.cashHotelAmount || 0;
+    let cashL = window.cashLaundryAmount || 0; 
+    let cashH = window.cashHotelAmount || 0;
     let qris = Number(document.getElementById("pay-qris").value) || 0;
     let transfer = Number(document.getElementById("pay-transfer").value) || 0;
     let free = Number(document.getElementById("pay-free").value) || 0;
     
-    let totalPaid = cashL + cashH + qris + transfer + free;
+    let totalPaid = cashL + cashH + qris + transfer; // FIX: Do not double-count 'free'
     let payLaterEnabled = window.globalSettings && String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() === "TRUE";
 
-    if ((window.cartGrandTotal - totalPaid) > 0) {
+    if (Math.round(window.cartGrandTotal) > Math.round(totalPaid)) {
         if (!payLaterEnabled) {
-            return alert("⚠️ Pembayaran Belum Cukup!");
+            return alert("⚠️ Pembayaran Belum Cukup! (Fitur Kasbon dinonaktifkan di Settings)");
         } else {
-            if (!confirm("⚠️ Pembayaran kurang dari Total Tagihan.\n\nSimpan sebagai tagihan Belum Lunas (Piutang)?")) return;
+            if (!confirm("⚠️ Pembayaran KASBON terdeteksi.\nSisa hutang akan masuk ke tab 'Belum Lunas'. Lanjutkan?")) return;
         }
     }
 
     if (shouldPrint && !btCharacteristic) {
-        alert("⚠️ Printer belum terhubung! Nota batal dicetak, namun transaksi tetap akan diselesaikan dan direkam ke sistem. (Sambungkan printer di menu atas)");
+        alert("⚠️ Printer belum terhubung! Nota batal dicetak, namun transaksi tetap akan diselesaikan dan direkam ke sistem.");
         shouldPrint = false;
     }
 
@@ -800,11 +812,15 @@ window.finalizeOrder = async function(shouldPrint) {
     };
 
     db.transaction(["orders"], "readwrite").objectStore("orders").add(orderPayload);
-    window.globalRecentOrders.unshift(orderPayload); // Optimistic UI update
+    window.globalRecentOrders.unshift(orderPayload);
     
     if (finalStatus === "Processing") {
         activeLaundryTickets.push(orderPayload);
         let tc = document.getElementById("ticket-count"); if(tc) tc.innerText = activeLaundryTickets.length;
+    }
+    
+    if (Math.round(window.cartGrandTotal) > Math.round(totalPaid)) {
+        window.globalUnpaidOrders.unshift(orderPayload);
     }
 
     if (shouldPrint && typeof window.buildEscPosReceipt === "function") {
@@ -820,7 +836,8 @@ window.renderActiveTickets = function() {
     grid.innerHTML = "";
     activeLaundryTickets.forEach((ticket) => {
         const isReady = ticket.orderStatus === "Ready for Pickup";
-        const totalPaid = (ticket.cashLaundryAmount||0) + (ticket.cashHotelAmount||0) + (ticket.qrisAmount||0) + (ticket.transferAmount||0) + (ticket.freeAmount||0);
+        // FIX: Removed freeAmount to stop double counting discount
+        const totalPaid = (ticket.cashLaundryAmount||0) + (ticket.cashHotelAmount||0) + (ticket.qrisAmount||0) + (ticket.transferAmount||0);
         const remaining = ticket.grandTotal - totalPaid;
         let receiptText = ticket.readableReceipt || ticket.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
         
@@ -848,6 +865,7 @@ window.markTicketReady = function(orderId) {
 window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) {
     activeSettlementTicket = window.globalRecentOrders.find(t => t.orderId === orderId);
     if(!activeSettlementTicket) activeSettlementTicket = activeLaundryTickets.find(t => t.orderId === orderId);
+    if(!activeSettlementTicket) activeSettlementTicket = window.globalUnpaidOrders.find(t => t.orderId === orderId);
     if(!activeSettlementTicket) return alert("Order tidak ditemukan!");
 
     if (remainingDue <= 0) {
@@ -865,38 +883,47 @@ window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) {
     }
     
     let elAmt = document.getElementById("settle-amount"); if(elAmt) elAmt.innerText = `Rp ${remainingDue.toLocaleString('id-ID')}`;
-    let elCash = document.getElementById("settle-cash"); if(elCash) elCash.value = remainingDue;
     
-    // Set rule: If opened from Unpaid tab, it's just paying off debt. If from Active Services, it forces Completion.
+    document.getElementById("settle-cash-l").value = remainingDue; // Default masuk laci Laundry
+    document.getElementById("settle-cash-h").value = 0;
+    document.getElementById("settle-qris").value = 0;
+    document.getElementById("settle-transfer").value = 0;
+    
     window.settlementMode = isFromUnpaid ? 'payOnly' : 'complete';
-    
     document.getElementById("settlement-modal").classList.remove("hidden");
 };
 
 window.confirmSettlement = function() {
     if (!activeSettlementTicket) return;
-    const c = Number(document.getElementById("settle-cash").value) || 0; 
+    const cL = Number(document.getElementById("settle-cash-l").value) || 0; 
+    const cH = Number(document.getElementById("settle-cash-h").value) || 0; 
     const q = Number(document.getElementById("settle-qris").value) || 0; 
     const t = Number(document.getElementById("settle-transfer").value) || 0;
     
-    activeSettlementTicket.cashHotelAmount = (activeSettlementTicket.cashHotelAmount || 0) + c; 
+    activeSettlementTicket.cashLaundryAmount = (activeSettlementTicket.cashLaundryAmount || 0) + cL; 
+    activeSettlementTicket.cashHotelAmount = (activeSettlementTicket.cashHotelAmount || 0) + cH; 
     activeSettlementTicket.qrisAmount = (activeSettlementTicket.qrisAmount || 0) + q; 
     activeSettlementTicket.transferAmount = (activeSettlementTicket.transferAmount || 0) + t;
     
-    let totalPaidNow = activeSettlementTicket.cashHotelAmount + (activeSettlementTicket.cashLaundryAmount||0) + activeSettlementTicket.qrisAmount + activeSettlementTicket.transferAmount;
+    let totalPaidNow = activeSettlementTicket.cashHotelAmount + activeSettlementTicket.cashLaundryAmount + activeSettlementTicket.qrisAmount + activeSettlementTicket.transferAmount;
     
     if (window.settlementMode === 'complete') {
-        // PREVENT CLEARING IF NOT FULLY PAID
         if (Math.round(activeSettlementTicket.grandTotal) > Math.round(totalPaidNow)) {
-            alert("⚠️ Tagihan belum lunas sepenuhnya! Order tidak bisa diselesaikan (Cleared) hingga LUNAS.");
-            return; // Stops the function from clearing the ticket
+            alert("⚠️ Tagihan belum lunas sepenuhnya! Order tidak bisa diselesaikan (Ambil Layanan) hingga LUNAS.");
+            return; 
         }
         activeSettlementTicket.orderStatus = "Completed"; 
-        activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
+        activeLaundryTickets = activeLaundryTickets.filter(tk => tk.orderId !== activeSettlementTicket.orderId);
     }
     
     activeSettlementTicket.syncStatus = "Pending";
     db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
+    
+    let go = window.globalRecentOrders.find(o => o.orderId === activeSettlementTicket.orderId);
+    if (go) Object.assign(go, activeSettlementTicket);
+
+    let u = window.globalUnpaidOrders.find(o => o.orderId === activeSettlementTicket.orderId);
+    if(u) Object.assign(u, activeSettlementTicket);
 
     document.getElementById("settlement-modal").classList.add("hidden"); 
     window.renderActiveTickets(); 
@@ -1204,7 +1231,6 @@ window.syncMasterData = async function(forceAwait = false) {
 window.extractUnpaidOrders = function() {
     window.activeUnpaidOrders = window.globalUnpaidOrders.filter(o => {
         if(o.orderStatus === "Voided" || o.orderStatus === "Void Pending") return false;
-        // FIX: Discounts are NOT cash paid. Do not add to totalPaid.
         let totalPaid = (o.cashLaundryAmount||0) + (o.cashHotelAmount||0) + (o.qrisAmount||0) + (o.transferAmount||0);
         return Math.round(o.grandTotal) > Math.round(totalPaid);
     });
