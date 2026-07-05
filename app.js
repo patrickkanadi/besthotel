@@ -1127,6 +1127,8 @@ window.renderHistoryList = function(type) {
     }
 };
 
+
+
 window.openCashDrop = function() { document.getElementById("cash-drop-modal").classList.remove("hidden"); };
 window.submitCashDrop = function() {
     const amount = Number(document.getElementById("drop-amount").value) || 0;
@@ -1364,6 +1366,52 @@ window.confirmInboundItem = function(index, inboundId) {
     window.renderProductGrid(); // Refresh stock UI
     window.runBackgroundSync();
 };
+
+// Make sure you have a global variable storing the shifts when you fetch them
+let globalRecentShifts = []; 
+
+// This runs when you click a row
+function openShiftDetail(shiftId) {
+    const shift = globalRecentShifts.find(s => s.shiftId === shiftId);
+    if (!shift) {
+        alert("Data shift tidak ditemukan.");
+        return;
+    }
+
+    // Run the renderer to inject data into the modal
+    renderShiftSummary(shift);
+
+    // Unhide the modal
+    document.getElementById('shiftDetailModal').classList.remove('hidden');
+}
+
+// This processes the data and puts it into the HTML elements
+function renderShiftSummary(shift) {
+    document.getElementById('modalTotalOrders').innerText = shift.totalOrders;
+    document.getElementById('modalTotalOmset').innerText = 'Rp ' + shift.totalOmset.toLocaleString('id-ID');
+    document.getElementById('modalCashLaundry').innerText = 'Rp ' + shift.cashLaundry.toLocaleString('id-ID');
+    document.getElementById('modalCashHotel').innerText = 'Rp ' + shift.cashHotel.toLocaleString('id-ID');
+    document.getElementById('modalQrisLaundry').innerText = 'Rp ' + shift.qrisLaundry.toLocaleString('id-ID');
+    document.getElementById('modalTransferHotel').innerText = 'Rp ' + shift.transferHotel.toLocaleString('id-ID');
+    document.getElementById('modalExpenses').innerText = 'Rp ' + (shift.expLaundry + shift.expHotel).toLocaleString('id-ID');
+    document.getElementById('modalNetDrawer').innerText = 'Rp ' + (shift.netLaundry + shift.netHotel).toLocaleString('id-ID');
+
+    let summaryHTML = '';
+    if (!shift.itemsSold || shift.itemsSold === "Tidak ada penjualan") {
+        summaryHTML = '<p class="text-sm text-gray-500">Tidak ada penjualan</p>';
+    } else {
+        const lines = shift.itemsSold.split('\n');
+        lines.forEach(line => {
+            if (line.startsWith('[')) {
+                let categoryName = line.replace(/\[|\]/g, '');
+                summaryHTML += `<h5 class="mt-3 font-semibold text-gray-800">${categoryName}</h5>`;
+            } else if (line.startsWith('•')) {
+                summaryHTML += `<div class="ml-2 text-sm text-gray-600 py-1 border-b border-gray-100">${line}</div>`;
+            }
+        });
+    }
+    document.getElementById('modalSalesSummaryContainer').innerHTML = summaryHTML;
+}
 
 // ==========================================
 // STOCK OPNAME (TABULAR)
