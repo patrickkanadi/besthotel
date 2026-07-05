@@ -728,6 +728,14 @@ window.openReview = function() {
     let rstL = document.getElementById("review-subtotal-laundry"); if(rstL) rstL.innerText = `Rp ${window.cartLaundryTotal.toLocaleString('id-ID')}`;
     let rstH = document.getElementById("review-subtotal-hotel"); if(rstH) rstH.innerText = `Rp ${window.cartHotelTotal.toLocaleString('id-ID')}`;
 
+    // MENAMPILKAN ATAU MENYEMBUNYIKAN TOMBOL BAYAR NANTI
+    let payLaterEnabled = window.globalSettings && String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() === "TRUE";
+    let btnPayLater = document.getElementById("btn-pay-later");
+    if(btnPayLater) {
+        if(payLaterEnabled) btnPayLater.classList.remove("hidden");
+        else btnPayLater.classList.add("hidden");
+    }
+
     window.calculateRemaining();
     let mod = document.getElementById("review-modal"); if(mod) mod.classList.remove("hidden");
 };
@@ -775,6 +783,17 @@ window.calculateRemaining = function(manualCash = false) {
             }
         }
     }
+};
+
+window.triggerPayLater = function() {
+    // 1. Ubah semua nilai input pembayaran menjadi 0
+    document.getElementById("pay-qris").value = 0;
+    document.getElementById("pay-transfer").value = 0;
+    document.getElementById("pay-cash").value = 0;
+    
+    // 2. Kalkulasi ulang dengan parameter (true) agar sistem 
+    //    mengunci nilai cash di 0 dan tidak mengisinya kembali otomatis.
+    window.calculateRemaining(true); 
 };
 
 window.finalizeOrder = async function(shouldPrint) {
