@@ -786,18 +786,16 @@ window.calculateRemaining = function(manualCash = false) {
 };
 
 window.triggerPayLater = function() {
-    // 1. Ubah semua nilai input pembayaran menjadi 0
     document.getElementById("pay-qris").value = 0;
     document.getElementById("pay-transfer").value = 0;
     document.getElementById("pay-cash").value = 0;
-    
-    // 2. Kalkulasi ulang dengan parameter (true) agar sistem 
-    //    mengunci nilai cash di 0 dan tidak mengisinya kembali otomatis.
     window.calculateRemaining(true); 
+    
+    // Passing true as second parameter skips the prompt
+    window.finalizeOrder(false, true); 
 };
 
-window.finalizeOrder = async function(shouldPrint) {
-    // FIX: Passing 'true' forces it to respect the Cash you manually typed!
+window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
     window.calculateRemaining(true); 
 
     let cashL = window.cashLaundryAmount || 0; 
@@ -806,20 +804,19 @@ window.finalizeOrder = async function(shouldPrint) {
     let transfer = Number(document.getElementById("pay-transfer").value) || 0;
     let free = Number(document.getElementById("pay-free").value) || 0;
     
-    // FIX: Do not add 'free' (discount) to totalPaid!
     let totalPaid = cashL + cashH + qris + transfer; 
-    let payLaterEnabled = window.globalSettings && String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() === "TRUE";
+    let payLaterEnabled = window.globalSettings && String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
 
     if (Math.round(window.cartGrandTotal) > Math.round(totalPaid)) {
         if (!payLaterEnabled) {
             return alert("⚠️ Pembayaran Belum Cukup! (Fitur Kasbon dinonaktifkan di Settings)");
-        } else {
+        } else if (!skipUnpaidPrompt) {
             if (!confirm("⚠️ Pembayaran KASBON terdeteksi.\nSisa hutang akan masuk ke tab 'Belum Lunas'. Lanjutkan?")) return;
         }
     }
 
     if (shouldPrint && !btCharacteristic) {
-        alert("⚠️ Printer belum terhubung! Nota batal dicetak, namun transaksi tetap akan diselesaikan dan direkam ke sistem. (Sambungkan printer di menu atas)");
+        alert("⚠️ Printer belum terhubung! Nota batal dicetak, namun transaksi tetap akan diselesaikan dan direkam ke sistem.");
         shouldPrint = false;
     }
 
@@ -838,12 +835,12 @@ window.finalizeOrder = async function(shouldPrint) {
     window.globalRecentOrders.unshift(orderPayload);
     
     if (finalStatus === "Processing") {
-        activeLaundryTickets.push(orderPayload);
+        window.activeLaundryTickets.push(orderPayload);
         let tc = document.getElementById("ticket-count"); if(tc) tc.innerText = activeLaundryTickets.length;
     }
     
     if (Math.round(window.cartGrandTotal) > Math.round(totalPaid)) {
-        window.globalUnpaidOrders.unshift(orderPayload); // Add locally so it appears immediately!
+        window.globalUnpaidOrders.unshift(orderPayload); 
     }
 
     if (shouldPrint && typeof window.buildEscPosReceipt === "function") {
@@ -1199,12 +1196,8 @@ window.submitCashDrop = function() {
 window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot");
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; }
-    
     try {
-        const response = await fetch(`${API_URL}?t=${Date.now()}`, { 
-            method: 'GET', headers: { 'Accept': 'application/json' }
-        }); 
-        
+        const response = await fetch(`${API_URL}?t=${Date.now()}`, { method: 'GET', headers: { 'Accept': 'application/json' } }); 
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const result = await response.json();
         
@@ -1216,7 +1209,6 @@ window.syncMasterData = async function(forceAwait = false) {
             window.globalRecentDrops = result.data.recentDrops || [];
             window.globalRecentShifts = result.recentShifts || [];
             window.globalPendingInbounds = result.data.pendingInbounds || [];
-            window.globalUnpaidOrders = result.data.unpaidOrders || []; // <--- GET FROM BACKEND
             
             window.globalSettings = result.data.settings || {};
             let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
@@ -1225,9 +1217,12 @@ window.syncMasterData = async function(forceAwait = false) {
                 if(payLaterEnabled) tabUnpaid.classList.remove("hidden");
                 else tabUnpaid.classList.add("hidden");
             }
-            window.extractUnpaidOrders();
 
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
+
+            // ✅ FIX: Extract unsynced local orders to merge with server orders
+            let localOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
+            let pendingOrders = localOrders.filter(o => o.syncStatus === "Pending");
 
             let p1 = new Promise((resolve) => {
                 let txFast = db.transaction(["staff", "menu", "expense_categories"], "readwrite");
@@ -1241,21 +1236,39 @@ window.syncMasterData = async function(forceAwait = false) {
 
                 txFast.oncomplete = () => {
                     globalMenuData = result.data.menu; 
-                    window.activeLaundryTickets = result.data.activeLaundryOrders || [];
+                    
+                    // Merge Active Orders
+                    let serverActive = result.data.activeLaundryOrders || [];
+                    pendingOrders.forEach(po => {
+                        if (po.orderStatus === "Processing" || po.orderStatus === "Ready for Pickup") {
+                            if (!serverActive.find(s => s.orderId === po.orderId)) serverActive.unshift(po);
+                        }
+                    });
+                    window.activeLaundryTickets = serverActive;
+
+                    // Merge Unpaid Orders
+                    let serverUnpaid = result.data.unpaidOrders || [];
+                    pendingOrders.forEach(po => {
+                        let totalPaid = (po.cashLaundryAmount||0) + (po.cashHotelAmount||0) + (po.qrisAmount||0) + (po.transferAmount||0);
+                        if (Math.round(po.grandTotal) > Math.round(totalPaid) && po.orderStatus !== "Voided" && po.orderStatus !== "Void Pending") {
+                            if (!serverUnpaid.find(s => s.orderId === po.orderId)) serverUnpaid.unshift(po);
+                        }
+                    });
+                    window.globalUnpaidOrders = serverUnpaid;
+
                     let tc = document.getElementById("ticket-count"); if(tc) tc.innerText = activeLaundryTickets.length;
                     
                     if (!document.getElementById("pos-screen").classList.contains("hidden")) { 
-                        loadMenuUI(); window.renderActiveTickets();
+                        loadMenuUI(); 
+                        window.renderActiveTickets();
+                        window.extractUnpaidOrders();
                     }
                     if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71"; resolve();
                 };
             });
             if(forceAwait) await p1; 
-        } else { throw new Error(result.message || "Unknown Server Error"); }
-    } catch (e) { 
-        console.error(e);
-        if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; 
-    }
+        }
+    } catch (e) { if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; }
 };
 
 window.extractUnpaidOrders = function() {
