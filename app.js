@@ -852,30 +852,45 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
 };
 
 window.renderActiveTickets = function() {
-    const grid = document.getElementById("ticket-grid-container"); if(!grid) return;
-    grid.innerHTML = "";
-    if(activeLaundryTickets.length === 0) {
-        grid.innerHTML = `<p style="color:#7f8c8d;">Tidak ada layanan aktif saat ini.</p>`; return;
-    }
-    
-    activeLaundryTickets.forEach((ticket) => {
-        const isReady = ticket.orderStatus === "Ready for Pickup";
-        const totalPaid = (ticket.cashLaundryAmount||0) + (ticket.cashHotelAmount||0) + (ticket.qrisAmount||0) + (ticket.transferAmount||0);
-        const remaining = ticket.grandTotal - totalPaid;
-        
-        // FIX: Safe parsing that prevents Javascript from crashing!
-        let receiptText = ticket.readableReceipt || "";
-        if (!receiptText && ticket.items) receiptText = ticket.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
-        if (!receiptText) receiptText = "Rincian tidak tersedia";
-        
-        let buttonsHtml = "";
-        if (!isReady) { 
-            buttonsHtml = `<button class="ticket-btn" style="background:#f39c12;" onclick="window.markTicketReady('${ticket.orderId}')">Tandai Selesai Diproses (Ready)</button>`; 
-        } else { 
-            buttonsHtml = `<button class="ticket-btn" style="background:#2ecc71;" onclick="window.openSettlement('${ticket.orderId}', ${remaining})">Ambil Layanan & Pelunasan</button>`; 
+    try {
+        const grid = document.getElementById("ticket-grid-container"); if(!grid) return;
+        grid.innerHTML = "";
+        if(!window.activeLaundryTickets || window.activeLaundryTickets.length === 0) {
+            grid.innerHTML = `<p style="color:#7f8c8d;">Tidak ada layanan aktif saat ini.</p>`; return;
         }
-        grid.innerHTML += `<div class="ticket-card ${isReady ? 'ready' : ''}"><div class="ticket-header"><span>Kamar: ${ticket.roomNumber}</span> <span style="color:#7f8c8d; font-size:12px;">${ticket.orderId}</span></div><div style="font-size:14px; margin-bottom:10px; white-space:pre-wrap;">${receiptText}</div><div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:10px; border-top:1px dashed #ddd; padding-top:5px;"><span>Tagihan Sisa:</span> <strong style="color:#e74c3c;">Rp ${remaining.toLocaleString('id-ID')}</strong></div>${buttonsHtml}</div>`;
-    });
+
+        window.activeLaundryTickets.forEach((ticket) => {
+            try {
+                const isReady = ticket.orderStatus === "Ready for Pickup";
+                const totalPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0);
+                const remaining = (Number(ticket.grandTotal)||0) - totalPaid;
+
+                let receiptText = ticket.readableReceipt || "";
+                if (!receiptText && Array.isArray(ticket.items)) {
+                    receiptText = ticket.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
+                }
+                if (!receiptText) receiptText = "Rincian tidak tersedia";
+
+                let buttonsHtml = "";
+                if (!isReady) { 
+                    buttonsHtml = `<button class="ticket-btn" style="background:#f39c12;" onclick="window.markTicketReady('${ticket.orderId}')">Tandai Selesai Diproses (Ready)</button>`; 
+                } else { 
+                    buttonsHtml = `<button class="ticket-btn" style="background:#2ecc71;" onclick="window.openSettlement('${ticket.orderId}', ${remaining})">Ambil Layanan & Pelunasan</button>`; 
+                }
+                
+                let safeRemaining = Number(remaining) || 0;
+
+                grid.innerHTML += `<div class="ticket-card ${isReady ? 'ready' : ''}">
+                    <div class="ticket-header"><span>Kamar: ${ticket.roomNumber || '-'}</span> <span style="color:#7f8c8d; font-size:12px;">${ticket.orderId}</span></div>
+                    <div style="font-size:14px; margin-bottom:10px; white-space:pre-wrap;">${receiptText}</div>
+                    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:10px; border-top:1px dashed #ddd; padding-top:5px;">
+                        <span>Tagihan Sisa:</span> <strong style="color:#e74c3c;">Rp ${safeRemaining.toLocaleString('id-ID')}</strong>
+                    </div>
+                    ${buttonsHtml}
+                </div>`;
+            } catch(innerErr) { console.error("Error ticket item", innerErr); }
+        });
+    } catch(err) { console.error("Critical renderActiveTickets", err); }
 };
 
 window.markTicketReady = function(orderId) {
@@ -1287,32 +1302,39 @@ window.extractUnpaidOrders = function() {
 };
 
 window.renderUnpaidOrders = function() {
-    const grid = document.getElementById("unpaid-grid-container"); if(!grid) return;
-    grid.innerHTML = "";
-    if(window.activeUnpaidOrders.length === 0) {
-        grid.innerHTML = `<p style="color:#7f8c8d;">Tidak ada tagihan tertunggak.</p>`; return;
-    }
-    
-    window.activeUnpaidOrders.forEach((order) => {
-        let paid = (order.cashLaundryAmount||0) + (order.cashHotelAmount||0) + (order.qrisAmount||0) + (order.transferAmount||0);
-        const remaining = order.grandTotal - paid;
-        
-        // FIX: Safe parsing that prevents Javascript from crashing!
-        let receiptText = order.readableReceipt || "";
-        if (!receiptText && order.items) receiptText = order.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
-        if (!receiptText) receiptText = "Rincian tidak tersedia";
-        
-        let buttonsHtml = `<button class="ticket-btn" style="background:#e74c3c;" onclick="window.openSettlement('${order.orderId}', ${remaining}, true)">💰 Lunasi / Cicil Tagihan</button>`;
-        
-        grid.innerHTML += `<div class="ticket-card" style="border-left-color: #e74c3c;">
-            <div class="ticket-header"><span>Kamar: ${order.roomNumber}</span> <span style="color:#7f8c8d; font-size:12px;">${order.orderId}</span></div>
-            <div style="font-size:14px; margin-bottom:10px; white-space:pre-wrap;">${receiptText}</div>
-            <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:10px; border-top:1px dashed #ddd; padding-top:5px;">
-                <span>Kekurangan:</span> <strong style="color:#e74c3c;">Rp ${remaining.toLocaleString('id-ID')}</strong>
-            </div>
-            ${buttonsHtml}
-        </div>`;
-    });
+    try {
+        const grid = document.getElementById("unpaid-grid-container"); if(!grid) return;
+        grid.innerHTML = "";
+        if(!window.activeUnpaidOrders || window.activeUnpaidOrders.length === 0) {
+            grid.innerHTML = `<p style="color:#7f8c8d;">Tidak ada tagihan tertunggak.</p>`; return;
+        }
+
+        window.activeUnpaidOrders.forEach((order) => {
+            try {
+                let paid = (Number(order.cashLaundryAmount)||0) + (Number(order.cashHotelAmount)||0) + (Number(order.qrisAmount)||0) + (Number(order.transferAmount)||0);
+                const remaining = (Number(order.grandTotal)||0) - paid;
+
+                let receiptText = order.readableReceipt || "";
+                if (!receiptText && Array.isArray(order.items)) {
+                    receiptText = order.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
+                }
+                if (!receiptText) receiptText = "Rincian tidak tersedia";
+
+                let buttonsHtml = `<button class="ticket-btn" style="background:#e74c3c;" onclick="window.openSettlement('${order.orderId}', ${remaining}, true)">💰 Lunasi / Cicil Tagihan</button>`;
+                
+                let safeRemaining = Number(remaining) || 0;
+
+                grid.innerHTML += `<div class="ticket-card" style="border-left-color: #e74c3c;">
+                    <div class="ticket-header"><span>Kamar: ${order.roomNumber || '-'}</span> <span style="color:#7f8c8d; font-size:12px;">${order.orderId}</span></div>
+                    <div style="font-size:14px; margin-bottom:10px; white-space:pre-wrap;">${receiptText}</div>
+                    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:10px; border-top:1px dashed #ddd; padding-top:5px;">
+                        <span>Kekurangan:</span> <strong style="color:#e74c3c;">Rp ${safeRemaining.toLocaleString('id-ID')}</strong>
+                    </div>
+                    ${buttonsHtml}
+                </div>`;
+            } catch(innerErr) { console.error("Error unpaid item", innerErr); }
+        });
+    } catch(err) { console.error("Critical renderUnpaidOrders", err); }
 };
 
 window.manualPushSync = async function() { await window.runBackgroundSync(); await window.syncMasterData(); alert("Sinkronisasi Database Berhasil!"); };
