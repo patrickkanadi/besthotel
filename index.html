@@ -266,9 +266,11 @@
             
             <div style="display: flex; gap: 10px; flex-wrap:wrap; margin-top:20px;">
                 <button onclick="closeReview()" style="flex:1; padding:15px; background:#bdc3c7; border:none; border-radius:8px; font-weight:bold;">Kembali</button>
-                <button id="btn-pay-later" onclick="finalizeOrder(false, true)" style="flex:1; padding:15px; background:#e74c3c; color:white; border:none; border-radius:8px; font-weight:bold;">⏳ Bayar Nanti</button>
-                <button onclick="finalizeOrder(false)" style="flex:1.5; padding:15px; background:#f39c12; color:white; border:none; border-radius:8px; font-weight:bold;">Simpan Saja</button>
-                <button onclick="finalizeOrder(true)" style="flex:2; padding:15px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold;">🖨️ Simpan & Cetak Lunas</button>
+                
+                <button id="btn-pay-later" onclick="triggerPayLater()" class="hidden" style="flex:1; padding:15px; background:#e74c3c; color:white; border:none; border-radius:8px; font-weight:bold;">⏳ Bayar Nanti</button>
+                
+                <button onclick="finalizeOrder(false)" style="flex:1.5; padding:15px; background:#f39c12; color:white; border:none; border-radius:8px; font-weight:bold;">Simpan</button>
+                <button onclick="finalizeOrder(true)" style="flex:1.5; padding:15px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold;">🖨️ Cetak</button>
             </div>
         </div>
     </div>
