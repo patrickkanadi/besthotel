@@ -390,59 +390,88 @@
         </div>
     </div>
 
-<div id="shift-detail-modal" class="modal-overlay hidden">
-        <div class="modal-content modal-large" style="max-width: 1100px; padding: 20px;">
-            <div style="text-align: center; margin-bottom: 10px;">
-                <h2 style="margin:0; color: #2c3e50;">📊 Riwayat Laporan Shift</h2>
-                <div style="font-size:13px; color:#7f8c8d; margin-top:5px;">ID: <span id="hist-sr-id" style="font-weight:bold;"></span> | Kasir: <span id="hist-sr-cashier" style="font-weight:bold;"></span></div>
+<div id="shiftDetailModal" class="fixed inset-0 z-50 hidden flex-items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm transition-opacity">
+    
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col mx-4 mt-10">
+        
+        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+            <h3 class="text-xl font-bold text-gray-800">Detail Shift</h3>
+            <button onclick="document.getElementById('shiftDetailModal').classList.add('hidden')" class="text-gray-400 hover:text-red-500 transition-colors text-2xl font-bold leading-none">
+                &times;
+            </button>
+        </div>
+        
+        <div class="p-6 overflow-y-auto flex-1 bg-white">
+            
+            <div class="grid grid-cols-2 gap-4 mb-8">
+                <div class="bg-blue-50 p-4 rounded-lg border border-blue-100 shadow-sm">
+                    <p class="text-sm text-blue-600 font-semibold mb-1">Total Orders</p>
+                    <p id="modalTotalOrders" class="text-3xl font-bold text-blue-900">0</p>
+                </div>
+                <div class="bg-emerald-50 p-4 rounded-lg border border-emerald-100 shadow-sm">
+                    <p class="text-sm text-emerald-600 font-semibold mb-1">Total Omset</p>
+                    <p id="modalTotalOmset" class="text-3xl font-bold text-emerald-900">Rp 0</p>
+                </div>
+            </div>
+
+            <div class="mb-8">
+                <h4 class="font-bold text-gray-700 mb-4 border-b-2 border-gray-100 pb-2 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                    Pecahan Pembayaran
+                </h4>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                    <div class="flex justify-between border-b border-gray-100 pb-1">
+                        <span class="text-gray-600">Cash Laundry</span>
+                        <span id="modalCashLaundry" class="font-semibold text-gray-800">Rp 0</span>
+                    </div>
+                    <div class="flex justify-between border-b border-gray-100 pb-1">
+                        <span class="text-gray-600">Cash Hotel</span>
+                        <span id="modalCashHotel" class="font-semibold text-gray-800">Rp 0</span>
+                    </div>
+                    <div class="flex justify-between border-b border-gray-100 pb-1">
+                        <span class="text-gray-600">QRIS Laundry</span>
+                        <span id="modalQrisLaundry" class="font-semibold text-gray-800">Rp 0</span>
+                    </div>
+                    <div class="flex justify-between border-b border-gray-100 pb-1">
+                        <span class="text-gray-600">Transfer Hotel</span>
+                        <span id="modalTransferHotel" class="font-semibold text-gray-800">Rp 0</span>
+                    </div>
+                    <div class="flex justify-between border-b border-gray-100 pb-1 mt-2 text-red-600">
+                        <span>Total Pengeluaran (Expenses)</span>
+                        <span id="modalExpenses" class="font-semibold">- Rp 0</span>
+                    </div>
+                    <div class="flex justify-between border-b border-gray-100 pb-1 mt-2 text-blue-700 bg-blue-50 px-2 rounded">
+                        <span class="font-bold">Total Uang Laci (Net)</span>
+                        <span id="modalNetDrawer" class="font-bold">Rp 0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <h4 class="font-bold text-gray-700 mb-4 border-b-2 border-gray-100 pb-2 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+                    Ringkasan Penjualan
+                </h4>
+                
+                <div id="modalSalesSummaryContainer" class="bg-gray-50 p-5 rounded-lg border border-gray-200 min-h-[120px] max-h-[300px] overflow-y-auto shadow-inner">
+                    </div>
             </div>
             
-            <div style="display: grid; grid-template-columns: 350px 1fr; gap: 20px; align-items: start;">
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                    <div class="revenue-breakdown" style="padding: 10px; margin-bottom: 0;">
-                        <div class="revenue-section-title" style="margin-bottom: 5px; font-size: 13px;">📊 Omset & Transaksi (<span id="hist-sr-orders">0</span> Nota)</div>
-                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Omset Laundry</span> <strong id="hist-sr-omset-laundry">Rp 0</strong></div>
-                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Omset Hotel</span> <strong id="hist-sr-omset-hotel">Rp 0</strong></div>
-                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px; color:#e74c3c;"><span>Diskon Keluar</span> <strong id="hist-sr-discounts">-Rp 0</strong></div>
-                    </div>
-
-                    <div class="revenue-breakdown" style="padding: 10px; margin-bottom: 0;">
-                        <div class="revenue-section-title" style="margin-bottom: 5px; font-size: 13px;">💵 Penerimaan Masuk</div>
-                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#2980b9;">Tunai (Laundry)</span> <strong id="hist-sr-cash-laundry">Rp 0</strong></div>
-                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#e67e22;">Tunai (Hotel)</span> <strong id="hist-sr-cash-hotel">Rp 0</strong></div>
-                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>QRIS (Laundry)</span> <strong id="hist-sr-qris-laundry">Rp 0</strong></div>
-                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Transfer (Hotel)</span> <strong id="hist-sr-transfer-hotel">Rp 0</strong></div>
-                    </div>
-
-                    <div class="revenue-breakdown" style="padding: 10px; margin-bottom: 0;">
-                        <div class="revenue-section-title" style="margin-bottom: 5px; font-size: 13px;">⚠️ Pengeluaran & Setoran</div>
-                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#2980b9;">Keluar/Tarik (Laundry)</span> <strong id="hist-sr-exp-laundry" style="color:#c0392b;">Rp 0</strong></div>
-                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#e67e22;">Keluar/Tarik (Hotel)</span> <strong id="hist-sr-exp-hotel" style="color:#c0392b;">Rp 0</strong></div>
-                    </div>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <div style="background: #e8f4f8; border: 1px solid #bce8f1; padding: 10px; border-radius: 8px; text-align: center;">
-                            <div style="font-size: 10px; font-weight: bold; color: #2980b9; text-transform: uppercase;">Sisa Tunai Laundry</div>
-                            <div id="hist-sr-net-laundry" style="font-size: 16px; font-weight: bold; color: #2980b9; margin-top: 4px;">Rp 0</div>
-                        </div>
-                        <div style="background: #fdf2e9; border: 1px solid #fae5d3; padding: 10px; border-radius: 8px; text-align: center;">
-                            <div style="font-size: 10px; font-weight: bold; color: #e67e22; text-transform: uppercase;">Sisa Tunai Hotel</div>
-                            <div id="hist-sr-net-hotel" style="font-size: 16px; font-weight: bold; color: #e67e22; margin-top: 4px;">Rp 0</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:15px; height: 100%;">
-                    <h3 style="margin:0 0 10px 0; color:#2c3e50; font-size: 14px;">🍔 Rincian Item Terjual</h3>
-                    <div id="hist-sr-items-summary" style="column-count: 3; column-gap: 20px; font-size: 11px;"></div>
-                </div>
-            </div>
-
-            <div style="display:flex; gap:10px; margin-top:15px;">
-                <button onclick="document.getElementById('shift-detail-modal').classList.add('hidden')" style="flex:1; padding:12px; border:none; border-radius:8px; font-weight:bold; background:#bdc3c7; color:#fff; cursor:pointer; font-size:14px;">Tutup</button>
-            </div>
         </div>
+        
+        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+            <button onclick="document.getElementById('shiftDetailModal').classList.add('hidden')" class="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors shadow-sm">
+                Tutup
+            </button>
+            <button onclick="window.print()" class="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors shadow-sm flex items-center">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                Cetak Laporan
+            </button>
+        </div>
+        
     </div>
+</div>
     
     <div id="inbound-modal" class="modal-overlay hidden">
         <div class="modal-content modal-large">
