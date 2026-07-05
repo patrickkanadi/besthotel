@@ -133,15 +133,11 @@
         <div id="workspace-tabs">
             <button class="ws-tab active" id="tab-new-order" onclick="switchWorkspace('new')">🛒 Order Baru</button>
             <button class="ws-tab" id="tab-active-tickets" onclick="switchWorkspace('tickets')">📋 Layanan Aktif (<span id="ticket-count">0</span>)</button>
-            <button class="ws-tab" id="tab-unpaid-orders" onclick="switchWorkspace('unpaid')" style="color: #e74c3c;">⏳ Belum Lunas (<span id="unpaid-count">0</span>)</button>
+            <button class="ws-tab hidden" id="tab-unpaid-orders" onclick="switchWorkspace('unpaid')" style="color: #e74c3c;">⏳ Belum Lunas (<span id="unpaid-count">0</span>)</button>
         </div>
 
         <div id="main-workspace-wrapper" class="hidden">
             <div id="main-workspace">
-                <div id="unpaid-workspace" class="hidden" style="flex: 1; padding: 20px; background: #fdf5f5; overflow-y: auto;">
-            <h2 style="margin-top:0; color: #c0392b;">Tagihan Belum Lunas (Piutang)</h2>
-            <div class="ticket-grid" id="unpaid-grid-container"></div>
-        </div>
                 <div id="menu-section">
                     <div id="command-bar">
                         <div id="customer-input-section">
@@ -390,89 +386,6 @@
         </div>
     </div>
 
-<div id="shiftDetailModal" class="fixed inset-0 z-50 hidden flex-items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm transition-opacity">
-    
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col mx-4 mt-10">
-        
-        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-            <h3 class="text-xl font-bold text-gray-800">Detail Shift</h3>
-            <button onclick="document.getElementById('shiftDetailModal').classList.add('hidden')" class="text-gray-400 hover:text-red-500 transition-colors text-2xl font-bold leading-none">
-                &times;
-            </button>
-        </div>
-        
-        <div class="p-6 overflow-y-auto flex-1 bg-white">
-            
-            <div class="grid grid-cols-2 gap-4 mb-8">
-                <div class="bg-blue-50 p-4 rounded-lg border border-blue-100 shadow-sm">
-                    <p class="text-sm text-blue-600 font-semibold mb-1">Total Orders</p>
-                    <p id="modalTotalOrders" class="text-3xl font-bold text-blue-900">0</p>
-                </div>
-                <div class="bg-emerald-50 p-4 rounded-lg border border-emerald-100 shadow-sm">
-                    <p class="text-sm text-emerald-600 font-semibold mb-1">Total Omset</p>
-                    <p id="modalTotalOmset" class="text-3xl font-bold text-emerald-900">Rp 0</p>
-                </div>
-            </div>
-
-            <div class="mb-8">
-                <h4 class="font-bold text-gray-700 mb-4 border-b-2 border-gray-100 pb-2 flex items-center">
-                    <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-                    Pecahan Pembayaran
-                </h4>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">
-                    <div class="flex justify-between border-b border-gray-100 pb-1">
-                        <span class="text-gray-600">Cash Laundry</span>
-                        <span id="modalCashLaundry" class="font-semibold text-gray-800">Rp 0</span>
-                    </div>
-                    <div class="flex justify-between border-b border-gray-100 pb-1">
-                        <span class="text-gray-600">Cash Hotel</span>
-                        <span id="modalCashHotel" class="font-semibold text-gray-800">Rp 0</span>
-                    </div>
-                    <div class="flex justify-between border-b border-gray-100 pb-1">
-                        <span class="text-gray-600">QRIS Laundry</span>
-                        <span id="modalQrisLaundry" class="font-semibold text-gray-800">Rp 0</span>
-                    </div>
-                    <div class="flex justify-between border-b border-gray-100 pb-1">
-                        <span class="text-gray-600">Transfer Hotel</span>
-                        <span id="modalTransferHotel" class="font-semibold text-gray-800">Rp 0</span>
-                    </div>
-                    <div class="flex justify-between border-b border-gray-100 pb-1 mt-2 text-red-600">
-                        <span>Total Pengeluaran (Expenses)</span>
-                        <span id="modalExpenses" class="font-semibold">- Rp 0</span>
-                    </div>
-                    <div class="flex justify-between border-b border-gray-100 pb-1 mt-2 text-blue-700 bg-blue-50 px-2 rounded">
-                        <span class="font-bold">Total Uang Laci (Net)</span>
-                        <span id="modalNetDrawer" class="font-bold">Rp 0</span>
-                    </div>
-                </div>
-            </div>
-
-            <div>
-                <h4 class="font-bold text-gray-700 mb-4 border-b-2 border-gray-100 pb-2 flex items-center">
-                    <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-                    Ringkasan Penjualan
-                </h4>
-                
-                <div id="modalSalesSummaryContainer" class="bg-gray-50 p-5 rounded-lg border border-gray-200 min-h-[120px] max-h-[300px] overflow-y-auto shadow-inner">
-                    </div>
-            </div>
-            
-        </div>
-        
-        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
-            <button onclick="document.getElementById('shiftDetailModal').classList.add('hidden')" class="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition-colors shadow-sm">
-                Tutup
-            </button>
-            <button onclick="window.print()" class="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors shadow-sm flex items-center">
-                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                Cetak Laporan
-            </button>
-        </div>
-        
-    </div>
-</div>
-    
     <div id="inbound-modal" class="modal-overlay hidden">
         <div class="modal-content modal-large">
             <h2 style="margin-top:0;">📦 Konfirmasi Stok Masuk</h2>
