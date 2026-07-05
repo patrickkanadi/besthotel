@@ -778,13 +778,17 @@ window.calculateRemaining = function(manualCash = false) {
 };
 
 window.finalizeOrder = async function(shouldPrint) {
+    // FIX: Passing 'true' forces it to respect the Cash you manually typed!
+    window.calculateRemaining(true); 
+
     let cashL = window.cashLaundryAmount || 0; 
     let cashH = window.cashHotelAmount || 0;
     let qris = Number(document.getElementById("pay-qris").value) || 0;
     let transfer = Number(document.getElementById("pay-transfer").value) || 0;
     let free = Number(document.getElementById("pay-free").value) || 0;
     
-    let totalPaid = cashL + cashH + qris + transfer; // FIX: Do not double-count 'free'
+    // FIX: Do not add 'free' (discount) to totalPaid!
+    let totalPaid = cashL + cashH + qris + transfer; 
     let payLaterEnabled = window.globalSettings && String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() === "TRUE";
 
     if (Math.round(window.cartGrandTotal) > Math.round(totalPaid)) {
@@ -796,7 +800,7 @@ window.finalizeOrder = async function(shouldPrint) {
     }
 
     if (shouldPrint && !btCharacteristic) {
-        alert("⚠️ Printer belum terhubung! Nota batal dicetak, namun transaksi tetap akan diselesaikan dan direkam ke sistem.");
+        alert("⚠️ Printer belum terhubung! Nota batal dicetak, namun transaksi tetap akan diselesaikan dan direkam ke sistem. (Sambungkan printer di menu atas)");
         shouldPrint = false;
     }
 
@@ -820,7 +824,7 @@ window.finalizeOrder = async function(shouldPrint) {
     }
     
     if (Math.round(window.cartGrandTotal) > Math.round(totalPaid)) {
-        window.globalUnpaidOrders.unshift(orderPayload);
+        window.globalUnpaidOrders.unshift(orderPayload); // Add locally so it appears immediately!
     }
 
     if (shouldPrint && typeof window.buildEscPosReceipt === "function") {
@@ -834,12 +838,19 @@ window.finalizeOrder = async function(shouldPrint) {
 window.renderActiveTickets = function() {
     const grid = document.getElementById("ticket-grid-container"); if(!grid) return;
     grid.innerHTML = "";
+    if(activeLaundryTickets.length === 0) {
+        grid.innerHTML = `<p style="color:#7f8c8d;">Tidak ada layanan aktif saat ini.</p>`; return;
+    }
+    
     activeLaundryTickets.forEach((ticket) => {
         const isReady = ticket.orderStatus === "Ready for Pickup";
-        // FIX: Removed freeAmount to stop double counting discount
         const totalPaid = (ticket.cashLaundryAmount||0) + (ticket.cashHotelAmount||0) + (ticket.qrisAmount||0) + (ticket.transferAmount||0);
         const remaining = ticket.grandTotal - totalPaid;
-        let receiptText = ticket.readableReceipt || ticket.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
+        
+        // FIX: Safe parsing that prevents Javascript from crashing!
+        let receiptText = ticket.readableReceipt || "";
+        if (!receiptText && ticket.items) receiptText = ticket.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
+        if (!receiptText) receiptText = "Rincian tidak tersedia";
         
         let buttonsHtml = "";
         if (!isReady) { 
@@ -1231,6 +1242,7 @@ window.syncMasterData = async function(forceAwait = false) {
 window.extractUnpaidOrders = function() {
     window.activeUnpaidOrders = window.globalUnpaidOrders.filter(o => {
         if(o.orderStatus === "Voided" || o.orderStatus === "Void Pending") return false;
+        // Total Paid explicitly ignores discount/free, because discounts lower the grandTotal directly.
         let totalPaid = (o.cashLaundryAmount||0) + (o.cashHotelAmount||0) + (o.qrisAmount||0) + (o.transferAmount||0);
         return Math.round(o.grandTotal) > Math.round(totalPaid);
     });
@@ -1252,7 +1264,11 @@ window.renderUnpaidOrders = function() {
     window.activeUnpaidOrders.forEach((order) => {
         let paid = (order.cashLaundryAmount||0) + (order.cashHotelAmount||0) + (order.qrisAmount||0) + (order.transferAmount||0);
         const remaining = order.grandTotal - paid;
-        let receiptText = order.readableReceipt || "Rincian tidak tersedia";
+        
+        // FIX: Safe parsing that prevents Javascript from crashing!
+        let receiptText = order.readableReceipt || "";
+        if (!receiptText && order.items) receiptText = order.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
+        if (!receiptText) receiptText = "Rincian tidak tersedia";
         
         let buttonsHtml = `<button class="ticket-btn" style="background:#e74c3c;" onclick="window.openSettlement('${order.orderId}', ${remaining}, true)">💰 Lunasi / Cicil Tagihan</button>`;
         
