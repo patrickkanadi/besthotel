@@ -312,20 +312,19 @@ window.viewShiftDetailsGlobal = function(shiftId) {
     let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
     if(!s) return;
     
-    document.getElementById("hist-sr-id").innerText = s.shiftId;
-    document.getElementById("hist-sr-cashier").innerText = s.cashier;
-    document.getElementById("hist-sr-orders").innerText = s.totalOrders;
-    document.getElementById("hist-sr-omset-laundry").innerText = "Rp " + (s.omsetLaundry||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-omset-hotel").innerText = "Rp " + (s.omsetHotel||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-discounts").innerText = "-Rp " + (s.totalFree||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-cash-laundry").innerText = "Rp " + (s.cashLaundry||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-cash-hotel").innerText = "Rp " + (s.cashHotel||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-qris-laundry").innerText = "Rp " + (s.qrisLaundry||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-transfer-hotel").innerText = "Rp " + (s.transferHotel||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-exp-laundry").innerText = "Rp " + (s.expLaundry||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-exp-hotel").innerText = "Rp " + (s.expHotel||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-net-laundry").innerText = "Rp " + (s.netLaundry||0).toLocaleString('id-ID');
-    document.getElementById("hist-sr-net-hotel").innerText = "Rp " + (s.netHotel||0).toLocaleString('id-ID');
+    window.currentShiftData = s;
+    document.getElementById("sr-orders").innerText = s.totalOrders;
+    document.getElementById("sr-omset-laundry").innerText = "Rp " + (s.omsetLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-omset-hotel").innerText = "Rp " + (s.omsetHotel||0).toLocaleString('id-ID');
+    document.getElementById("sr-discounts").innerText = "-Rp " + (s.totalFree||0).toLocaleString('id-ID');
+    document.getElementById("sr-cash-laundry").innerText = "Rp " + (s.cashLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-cash-hotel").innerText = "Rp " + (s.cashHotel||0).toLocaleString('id-ID');
+    document.getElementById("sr-qris-laundry").innerText = "Rp " + (s.qrisLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-transfer-hotel").innerText = "Rp " + (s.transferHotel||0).toLocaleString('id-ID');
+    document.getElementById("sr-exp-laundry").innerText = "Rp " + (s.expLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-exp-hotel").innerText = "Rp " + (s.expHotel||0).toLocaleString('id-ID');
+    document.getElementById("sr-net-laundry").innerText = "Rp " + (s.netLaundry||0).toLocaleString('id-ID');
+    document.getElementById("sr-net-hotel").innerText = "Rp " + (s.netHotel||0).toLocaleString('id-ID');
 
     let foodHtml = "";
     if (typeof s.foodSummary === 'string') {
@@ -334,10 +333,14 @@ window.viewShiftDetailsGlobal = function(shiftId) {
             if(line.trim()) foodHtml += `<div style="padding:4px 0; border-bottom:1px dashed #eee; font-size:12px; color:#2c3e50;">${line}</div>`;
         });
     }
-    document.getElementById("hist-sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
+    document.getElementById("sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
     
-    let shiftModal = document.getElementById("shift-detail-modal");
-    shiftModal.style.zIndex = "2000"; 
+    const endBtn = document.getElementById("btn-end-shift");
+    if(endBtn) endBtn.classList.add("hidden");
+
+    // ✅ FIX THE MODAL OVERLAP ISSUE HERE
+    let shiftModal = document.getElementById("shift-report-modal");
+    shiftModal.style.zIndex = "2000"; // Forces the modal to jump to the very front
     shiftModal.classList.remove("hidden");
 };
 
@@ -408,7 +411,6 @@ window.switchWorkspace = function(type) {
     document.querySelectorAll('.ws-tab').forEach(b => b.classList.remove('active'));
     document.getElementById("main-workspace-wrapper").classList.add("hidden");
     document.getElementById("active-tickets-workspace").classList.add("hidden");
-    
     let uWs = document.getElementById("unpaid-workspace");
     if(uWs) uWs.classList.add("hidden");
     
@@ -879,24 +881,27 @@ window.confirmSettlement = function() {
     const q = Number(document.getElementById("settle-qris").value) || 0; 
     const t = Number(document.getElementById("settle-transfer").value) || 0;
     
+    // Accumulate the payments directly to the ticket memory
     activeSettlementTicket.cashHotelAmount = (activeSettlementTicket.cashHotelAmount || 0) + c; 
     activeSettlementTicket.qrisAmount = (activeSettlementTicket.qrisAmount || 0) + q; 
     activeSettlementTicket.transferAmount = (activeSettlementTicket.transferAmount || 0) + t;
     
-    let totalPaidNow = activeSettlementTicket.cashHotelAmount + (activeSettlementTicket.cashLaundryAmount||0) + activeSettlementTicket.qrisAmount + activeSettlementTicket.transferAmount;
-    
     if (window.settlementMode === 'complete') {
-        // PREVENT CLEARING IF NOT FULLY PAID
-        if (Math.round(activeSettlementTicket.grandTotal) > Math.round(totalPaidNow)) {
-            alert("⚠️ Tagihan belum lunas sepenuhnya! Order tidak bisa diselesaikan (Cleared) hingga LUNAS.");
-            return; // Stops the function from clearing the ticket
-        }
         activeSettlementTicket.orderStatus = "Completed"; 
         activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
     }
     
     activeSettlementTicket.syncStatus = "Pending";
     db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
+    
+    // Refresh global history
+    let go = window.globalRecentOrders.find(o => o.orderId === activeSettlementTicket.orderId);
+    if (go) {
+        go.cashHotelAmount = activeSettlementTicket.cashHotelAmount;
+        go.qrisAmount = activeSettlementTicket.qrisAmount;
+        go.transferAmount = activeSettlementTicket.transferAmount;
+        go.orderStatus = activeSettlementTicket.orderStatus;
+    }
 
     document.getElementById("settlement-modal").classList.add("hidden"); 
     window.renderActiveTickets(); 
@@ -1127,8 +1132,6 @@ window.renderHistoryList = function(type) {
     }
 };
 
-
-
 window.openCashDrop = function() { document.getElementById("cash-drop-modal").classList.remove("hidden"); };
 window.submitCashDrop = function() {
     const amount = Number(document.getElementById("drop-amount").value) || 0;
@@ -1161,10 +1164,10 @@ window.syncMasterData = async function(forceAwait = false) {
             window.globalRecentDrops = result.data.recentDrops || [];
             window.globalRecentShifts = result.recentShifts || [];
             window.globalPendingInbounds = result.data.pendingInbounds || [];
-            window.globalUnpaidOrders = result.data.unpaidOrders || []; // <--- GET FROM BACKEND
             
+            // ✅ THE PAY LATER CHECK IS HERE
             window.globalSettings = result.data.settings || {};
-            let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
+            let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() === "TRUE";
             let tabUnpaid = document.getElementById("tab-unpaid-orders");
             if(tabUnpaid) {
                 if(payLaterEnabled) tabUnpaid.classList.remove("hidden");
@@ -1204,11 +1207,10 @@ window.syncMasterData = async function(forceAwait = false) {
 };
 
 window.extractUnpaidOrders = function() {
-    window.activeUnpaidOrders = window.globalUnpaidOrders.filter(o => {
+    window.activeUnpaidOrders = window.globalRecentOrders.filter(o => {
         if(o.orderStatus === "Voided" || o.orderStatus === "Void Pending") return false;
-        // FIX: Discounts are NOT cash paid. Do not add to totalPaid.
-        let totalPaid = (o.cashLaundryAmount||0) + (o.cashHotelAmount||0) + (o.qrisAmount||0) + (o.transferAmount||0);
-        return Math.round(o.grandTotal) > Math.round(totalPaid);
+        let paid = (o.cashLaundryAmount||0) + (o.cashHotelAmount||0) + (o.qrisAmount||0) + (o.transferAmount||0) + (o.discounts||0);
+        return Math.round(o.grandTotal) > Math.round(paid);
     });
     
     let uc = document.getElementById("unpaid-count");
@@ -1226,7 +1228,7 @@ window.renderUnpaidOrders = function() {
     }
     
     window.activeUnpaidOrders.forEach((order) => {
-        let paid = (order.cashLaundryAmount||0) + (order.cashHotelAmount||0) + (order.qrisAmount||0) + (order.transferAmount||0);
+        let paid = (order.cashLaundryAmount||0) + (order.cashHotelAmount||0) + (order.qrisAmount||0) + (order.transferAmount||0) + (order.discounts||0);
         const remaining = order.grandTotal - paid;
         let receiptText = order.readableReceipt || "Rincian tidak tersedia";
         
@@ -1366,52 +1368,6 @@ window.confirmInboundItem = function(index, inboundId) {
     window.renderProductGrid(); // Refresh stock UI
     window.runBackgroundSync();
 };
-
-// Make sure you have a global variable storing the shifts when you fetch them
-let globalRecentShifts = []; 
-
-// This runs when you click a row
-function openShiftDetail(shiftId) {
-    const shift = globalRecentShifts.find(s => s.shiftId === shiftId);
-    if (!shift) {
-        alert("Data shift tidak ditemukan.");
-        return;
-    }
-
-    // Run the renderer to inject data into the modal
-    renderShiftSummary(shift);
-
-    // Unhide the modal
-    document.getElementById('shiftDetailModal').classList.remove('hidden');
-}
-
-// This processes the data and puts it into the HTML elements
-function renderShiftSummary(shift) {
-    document.getElementById('modalTotalOrders').innerText = shift.totalOrders;
-    document.getElementById('modalTotalOmset').innerText = 'Rp ' + shift.totalOmset.toLocaleString('id-ID');
-    document.getElementById('modalCashLaundry').innerText = 'Rp ' + shift.cashLaundry.toLocaleString('id-ID');
-    document.getElementById('modalCashHotel').innerText = 'Rp ' + shift.cashHotel.toLocaleString('id-ID');
-    document.getElementById('modalQrisLaundry').innerText = 'Rp ' + shift.qrisLaundry.toLocaleString('id-ID');
-    document.getElementById('modalTransferHotel').innerText = 'Rp ' + shift.transferHotel.toLocaleString('id-ID');
-    document.getElementById('modalExpenses').innerText = 'Rp ' + (shift.expLaundry + shift.expHotel).toLocaleString('id-ID');
-    document.getElementById('modalNetDrawer').innerText = 'Rp ' + (shift.netLaundry + shift.netHotel).toLocaleString('id-ID');
-
-    let summaryHTML = '';
-    if (!shift.itemsSold || shift.itemsSold === "Tidak ada penjualan") {
-        summaryHTML = '<p class="text-sm text-gray-500">Tidak ada penjualan</p>';
-    } else {
-        const lines = shift.itemsSold.split('\n');
-        lines.forEach(line => {
-            if (line.startsWith('[')) {
-                let categoryName = line.replace(/\[|\]/g, '');
-                summaryHTML += `<h5 class="mt-3 font-semibold text-gray-800">${categoryName}</h5>`;
-            } else if (line.startsWith('•')) {
-                summaryHTML += `<div class="ml-2 text-sm text-gray-600 py-1 border-b border-gray-100">${line}</div>`;
-            }
-        });
-    }
-    document.getElementById('modalSalesSummaryContainer').innerHTML = summaryHTML;
-}
 
 // ==========================================
 // STOCK OPNAME (TABULAR)
