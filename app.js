@@ -271,6 +271,15 @@ window.viewOrderDetailsGlobal = function(orderId) {
     detailModal.classList.remove("hidden");
 };
 
+window.showToast = function(message, isError = false) {
+    let toast = document.getElementById("toast-notification");
+    if (!toast) return;
+    toast.innerText = message;
+    toast.style.background = isError ? "#e74c3c" : "#27ae60";
+    toast.style.opacity = "1";
+    setTimeout(() => { toast.style.opacity = "0"; }, 3000);
+};
+
 window.printOrderGlobal = function(orderId) {
     let o = window.globalRecentOrders.find(x => x.orderId === orderId);
     if(!o) return;
@@ -280,7 +289,7 @@ window.printOrderGlobal = function(orderId) {
     let total = `Subtotal: Rp ${o.subtotal.toLocaleString('id-ID')}\n`;
     if(o.discounts > 0) total += `Diskon: -Rp ${o.discounts.toLocaleString('id-ID')}\n`;
     total += `TOTAL: Rp ${o.grandTotal.toLocaleString('id-ID')}\n`;
-    total += `\n[Pembayaran]\nCash Lndry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}\nCash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}\nQRIS Lndry: Rp ${o.qrisAmount.toLocaleString('id-ID')}\nTrf Hotel : Rp ${o.transferAmount.toLocaleString('id-ID')}`;
+    total += `\n[Pembayaran]\nCash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}\nCash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}\nQRIS Lndry: Rp ${o.qrisAmount.toLocaleString('id-ID')}\nTrf Hotel : Rp ${o.transferAmount.toLocaleString('id-ID')}`;
     
     window.printGlobalReceipt("SALINAN NOTA", content, total, "TERIMA KASIH");
 };
@@ -330,18 +339,36 @@ window.viewShiftDetailsGlobal = function(shiftId) {
     let foodHtml = "";
     if (typeof s.foodSummary === 'string') {
         let lines = s.foodSummary.split('\n');
+        
+        let cols = { "Hotel": "", "Laundry": "", "Tenant/Lainnya": "" };
+        let currentLoc = "Tenant/Lainnya";
+
         lines.forEach(line => {
             if (line.startsWith("📍")) {
-                foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px; margin-top:10px;">${line}</div>`;
+                let rawLoc = line.replace("📍", "").trim().toLowerCase();
+                if (rawLoc.includes("hotel")) currentLoc = "Hotel";
+                else if (rawLoc.includes("laundry")) currentLoc = "Laundry";
+                else currentLoc = "Tenant/Lainnya";
             } else if (line.startsWith("📁")) {
-                foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">${line}</div>`;
+                cols[currentLoc] += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">${line}</div>`;
             } else if (line.includes(":::")) {
                 let parts = line.split(":::");
-                foodHtml += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${parts[0].trim()}</span> <strong>${parts[1].trim()}x</strong></div>`;
+                cols[currentLoc] += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${parts[0].trim()}</span> <strong>${parts[1].trim()}x</strong></div>`;
             } else if (line.trim()) {
-                foodHtml += `<div style="padding:2px 0; margin-left:10px;">${line}</div>`;
+                cols[currentLoc] += `<div style="padding:2px 0; margin-left:10px;">${line}</div>`;
             }
         });
+
+        foodHtml += `<div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">`;
+        for (const [locName, content] of Object.entries(cols)) {
+            if (content) {
+                foodHtml += `<div style="background:#f9f9f9; padding:8px; border-radius:6px; border:1px solid #eee;">
+                    <div style="font-weight:bold; color:#e67e22; border-bottom:1px solid #ddd; padding-bottom:4px; margin-bottom:4px; text-align:center;">📍 ${locName}</div>
+                    ${content}
+                </div>`;
+            }
+        }
+        foodHtml += `</div>`;
     }
     document.getElementById("hist-sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
     
@@ -845,7 +872,6 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
     
     if (finalStatus === "Processing") {
         window.activeLaundryTickets.push(orderPayload);
-        let tc = document.getElementById("ticket-count"); if(tc) tc.innerText = activeLaundryTickets.length;
     }
     
     if (Math.round(window.cartGrandTotal) > Math.round(totalPaid)) {
@@ -857,7 +883,18 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
     }
     
     let mod = document.getElementById("review-modal"); if(mod) mod.classList.add("hidden");
-    window.lockMenu(); renderProductGrid(); window.extractUnpaidOrders(); window.runBackgroundSync();
+    
+    window.showToast("✅ Order berhasil disimpan!");
+    
+    window.lockMenu(); 
+    window.renderProductGrid(); 
+    window.extractUnpaidOrders(); 
+    
+    // UPDATE THE BADGE NUMBER HERE
+    let tc = document.getElementById("ticket-count"); 
+    if(tc) tc.innerText = window.activeLaundryTickets.length;
+    
+    window.runBackgroundSync();
 };
 
 window.renderActiveTickets = function() {
@@ -1307,7 +1344,6 @@ window.syncMasterData = async function(forceAwait = false) {
                 txFast.oncomplete = () => {
                     globalMenuData = result.data.menu; 
                     
-                    // Merge Active Orders
                     let serverActive = result.data.activeLaundryOrders || [];
                     pendingOrders.forEach(po => {
                         if (po.orderStatus === "Processing" || po.orderStatus === "Ready for Pickup") {
@@ -1316,7 +1352,6 @@ window.syncMasterData = async function(forceAwait = false) {
                     });
                     window.activeLaundryTickets = serverActive;
 
-                    // Merge Unpaid Orders
                     let serverUnpaid = result.data.unpaidOrders || [];
                     pendingOrders.forEach(po => {
                         let totalPaid = (po.cashLaundryAmount||0) + (po.cashHotelAmount||0) + (po.qrisAmount||0) + (po.transferAmount||0);
@@ -1326,7 +1361,9 @@ window.syncMasterData = async function(forceAwait = false) {
                     });
                     window.globalUnpaidOrders = serverUnpaid;
 
-                    let tc = document.getElementById("ticket-count"); if(tc) tc.innerText = activeLaundryTickets.length;
+                    // ✅ UPDATE THE BADGE NUMBER HERE
+                    let tc = document.getElementById("ticket-count"); 
+                    if(tc) tc.innerText = window.activeLaundryTickets.length;
                     
                     if (!document.getElementById("pos-screen").classList.contains("hidden")) { 
                         loadMenuUI(); 
@@ -1751,35 +1788,46 @@ window.printCurrentShiftReport = async function() {
     } catch (e) { alert("Gagal mencetak laporan: " + e.toString()); }
 };
 
-window.triggerEndShift = async function() {
+window.triggerEndShift = async function(isAutoClose = false) {
     const data = window.currentShiftData; if (!data) return alert("Gagal mengambil data shift kasir.");
-    if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
+    
+    if (!isAutoClose) {
+        if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
+        
+        if (!btCharacteristic) {
+            alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
+        } else {
+            try { await window.buildShiftReportReceipt(data); } 
+            catch (e) { alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem."); }
+        }
+    }
     
     let tx = db.transaction(["local_shift_history", "shift_reports", "active_shifts"], "readwrite");
     tx.objectStore("local_shift_history").add(data); tx.objectStore("shift_reports").add(data);
     tx.objectStore("active_shifts").delete(currentPin);
     
     tx.oncomplete = async () => {
-        document.getElementById("shift-report-modal").classList.add("hidden");
+        let mod = document.getElementById("shift-report-modal");
+        if(mod) mod.classList.add("hidden");
+        await window.runBackgroundSync(); 
         
-        if (!btCharacteristic) {
-            alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
-        } else {
-            try {
-                await window.buildShiftReportReceipt(data);
-            } catch (e) {
-                alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
-            }
-        }
-        
-        await window.runBackgroundSync(); window.location.reload(); 
+        if(isAutoClose) alert("Sistem logout otomatis karena tidak ada aktivitas selama 6 jam. Laporan shift telah disimpan.");
+        window.location.reload(); 
     };
 };
+
+let idleTime = 0;
+function resetIdleTimer() { idleTime = 0; }
 
 window.onload = async () => { 
     await initDB(); 
     window.syncMasterData(); 
     
+    // Listen for activity to reset idle timer
+    document.addEventListener("mousemove", resetIdleTimer);
+    document.addEventListener("keypress", resetIdleTimer);
+    document.addEventListener("touchstart", resetIdleTimer);
+
     document.addEventListener("mousedown", function(e) {
         let resBox = document.getElementById('autocomplete-results');
         if (resBox && !e.target.closest('#autocomplete-results') && e.target.id !== 'room-input') { 
@@ -1789,4 +1837,31 @@ window.onload = async () => {
 
     window.setInterval(window.runBackgroundSync, 5000); 
     window.setInterval(window.syncMasterData, 30000); 
+    
+    // AUTO LOGOUT LOGIC (Checks every 30 seconds)
+    window.setInterval(async () => {
+        if (!currentShiftId) return; // Not logged in
+        idleTime += 30; // Add 30 seconds
+
+        // 6 Hours = 21600 seconds
+        if (idleTime >= 21600) {
+            let activeOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
+            let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId);
+            
+            let shiftStartTime = new Date(currentLoginTime).getTime();
+            let shiftDurationMinutes = (Date.now() - shiftStartTime) / 1000 / 60;
+
+            // Ghost Shift Rule: < 5 minutes AND 0 orders
+            if (shiftOrders.length === 0 && shiftDurationMinutes < 5) {
+                db.transaction(["active_shifts"], "readwrite").objectStore("active_shifts").delete(currentPin);
+                alert("Sistem mendeteksi shift kosong. Logout otomatis.");
+                window.location.reload();
+            } else {
+                // Legitimate Shift: Auto-End & Report
+                await window.openShiftReport();
+                // Force close without printing
+                window.triggerEndShift(true); 
+            }
+        }
+    }, 30000);
 };
