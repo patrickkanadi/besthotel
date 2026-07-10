@@ -339,36 +339,31 @@ window.viewShiftDetailsGlobal = function(shiftId) {
     let foodHtml = "";
     if (typeof s.foodSummary === 'string') {
         let lines = s.foodSummary.split('\n');
-        
-        let cols = { "Hotel": "", "Laundry": "", "Tenant/Lainnya": "" };
-        let currentLoc = "Tenant/Lainnya";
+        let currentLocBlock = "";
 
         lines.forEach(line => {
             if (line.startsWith("📍")) {
-                let rawLoc = line.replace("📍", "").trim().toLowerCase();
-                if (rawLoc.includes("hotel")) currentLoc = "Hotel";
-                else if (rawLoc.includes("laundry")) currentLoc = "Laundry";
-                else currentLoc = "Tenant/Lainnya";
+                // Tutup box lokasi sebelumnya jika ada
+                if (currentLocBlock !== "") {
+                    foodHtml += currentLocBlock + `</div>`;
+                }
+                // Buka box lokasi baru dengan style fluid yang sama seperti Open Shift
+                currentLocBlock = `<div style="break-inside: avoid; margin-bottom: 12px; background: #f9f9f9; padding: 6px; border-radius: 6px; border: 1px solid #eee;">`;
+                currentLocBlock += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px;">${line}</div>`;
             } else if (line.startsWith("📁")) {
-                cols[currentLoc] += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">${line}</div>`;
+                currentLocBlock += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">${line}</div>`;
             } else if (line.includes(":::")) {
                 let parts = line.split(":::");
-                cols[currentLoc] += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${parts[0].trim()}</span> <strong>${parts[1].trim()}x</strong></div>`;
+                currentLocBlock += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${parts[0].trim()}</span> <strong>${parts[1].trim()}x</strong></div>`;
             } else if (line.trim()) {
-                cols[currentLoc] += `<div style="padding:2px 0; margin-left:10px;">${line}</div>`;
+                currentLocBlock += `<div style="padding:2px 0; margin-left:10px;">${line}</div>`;
             }
         });
 
-        foodHtml += `<div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">`;
-        for (const [locName, content] of Object.entries(cols)) {
-            if (content) {
-                foodHtml += `<div style="background:#f9f9f9; padding:8px; border-radius:6px; border:1px solid #eee;">
-                    <div style="font-weight:bold; color:#e67e22; border-bottom:1px solid #ddd; padding-bottom:4px; margin-bottom:4px; text-align:center;">📍 ${locName}</div>
-                    ${content}
-                </div>`;
-            }
+        // Pastikan box lokasi terakhir ditutup
+        if (currentLocBlock !== "") {
+            foodHtml += currentLocBlock + `</div>`;
         }
-        foodHtml += `</div>`;
     }
     document.getElementById("hist-sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
     
