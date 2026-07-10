@@ -331,7 +331,16 @@ window.viewShiftDetailsGlobal = function(shiftId) {
     if (typeof s.foodSummary === 'string') {
         let lines = s.foodSummary.split('\n');
         lines.forEach(line => {
-            if(line.trim()) foodHtml += `<div style="padding:4px 0; border-bottom:1px dashed #eee; font-size:12px; color:#2c3e50;">${line}</div>`;
+            if (line.startsWith("📍")) {
+                foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px; margin-top:10px;">${line}</div>`;
+            } else if (line.startsWith("📁")) {
+                foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">${line}</div>`;
+            } else if (line.includes(":::")) {
+                let parts = line.split(":::");
+                foodHtml += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${parts[0].trim()}</span> <strong>${parts[1].trim()}x</strong></div>`;
+            } else if (line.trim()) {
+                foodHtml += `<div style="padding:2px 0; margin-left:10px;">${line}</div>`;
+            }
         });
     }
     document.getElementById("hist-sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
@@ -926,8 +935,7 @@ window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) {
     
     let elAmt = document.getElementById("settle-amount"); if(elAmt) elAmt.innerText = `Rp ${remainingDue.toLocaleString('id-ID')}`;
     
-    document.getElementById("settle-cash-l").value = remainingDue; // Default masuk laci Laundry
-    document.getElementById("settle-cash-h").value = 0;
+    document.getElementById("settle-cash").value = remainingDue;
     document.getElementById("settle-qris").value = 0;
     document.getElementById("settle-transfer").value = 0;
     
@@ -937,21 +945,65 @@ window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) {
 
 window.confirmSettlement = function() {
     if (!activeSettlementTicket) return;
-    const cL = Number(document.getElementById("settle-cash-l").value) || 0; 
-    const cH = Number(document.getElementById("settle-cash-h").value) || 0; 
+    const cash = Number(document.getElementById("settle-cash").value) || 0; 
     const q = Number(document.getElementById("settle-qris").value) || 0; 
     const t = Number(document.getElementById("settle-transfer").value) || 0;
     
-    activeSettlementTicket.cashLaundryAmount = (activeSettlementTicket.cashLaundryAmount || 0) + cL; 
-    activeSettlementTicket.cashHotelAmount = (activeSettlementTicket.cashHotelAmount || 0) + cH; 
-    activeSettlementTicket.qrisAmount = (activeSettlementTicket.qrisAmount || 0) + q; 
+    // Kalkulasi subtotal Hotel vs Laundry berdasarkan riwayat item
+    let cLTotal = 0; let cHTotal = 0;
+    if (activeSettlementTicket.items && activeSettlementTicket.items.length > 0) {
+        activeSettlementTicket.items.forEach(i => {
+            let lt = i.qty * i.price;
+            if(i.location && i.location.toLowerCase().includes('laundry')) cLTotal += lt;
+            else cHTotal += lt;
+        });
+    } else if (activeSettlementTicket.readableReceipt) {
+        let lines = activeSettlementTicket.readableReceipt.split('\n');
+        lines.forEach(l => {
+            let match = l.match(/\(Rp\s*([\d.]+)\)/);
+            if(match) {
+                let val = Number(match[1].replace(/\./g, ''));
+                if(l.includes('[L]')) cLTotal += val;
+                else cHTotal += val;
+            }
+        });
+        if(cLTotal + cHTotal === 0) cHTotal = activeSettlementTicket.subtotal; 
+    } else {
+        cHTotal = activeSettlementTicket.subtotal; 
+    }
+
+    // Hitung sisa hutang spesifik per laci (termasuk potongan diskon)
+    let remLaundry = Math.max(0, cLTotal - (activeSettlementTicket.cashLaundryAmount||0) - (activeSettlementTicket.qrisAmount||0));
+    let remHotel = Math.max(0, cHTotal - (activeSettlementTicket.cashHotelAmount||0) - (activeSettlementTicket.transferAmount||0));
+
+    let discountLeft = activeSettlementTicket.discounts || 0;
+    if (remHotel >= discountLeft) { remHotel -= discountLeft; }
+    else { discountLeft -= remHotel; remHotel = 0; remLaundry = Math.max(0, remLaundry - discountLeft); }
+
+    // Hitung sisa hutang setelah bayar QRIS & Transfer barusan
+    remLaundry = Math.max(0, remLaundry - q);
+    remHotel = Math.max(0, remHotel - t);
+
+    // Auto-split tunai yang diinput kasir
+    let newCashL = 0; let newCashH = 0;
+    if (cash >= (remLaundry + remHotel)) {
+        newCashL = remLaundry;
+        newCashH = remHotel + (cash - (remLaundry + remHotel));
+    } else {
+        if (cash >= remHotel) { newCashH = remHotel; newCashL = cash - remHotel; } 
+        else { newCashH = cash; newCashL = 0; }
+    }
+
+    activeSettlementTicket.cashLaundryAmount = (activeSettlementTicket.cashLaundryAmount || 0) + newCashL;
+    activeSettlementTicket.cashHotelAmount = (activeSettlementTicket.cashHotelAmount || 0) + newCashH;
+    activeSettlementTicket.qrisAmount = (activeSettlementTicket.qrisAmount || 0) + q;
     activeSettlementTicket.transferAmount = (activeSettlementTicket.transferAmount || 0) + t;
     
-    let totalPaidNow = activeSettlementTicket.cashHotelAmount + activeSettlementTicket.cashLaundryAmount + activeSettlementTicket.qrisAmount + activeSettlementTicket.transferAmount;
+    let totalPaidNow = activeSettlementTicket.cashHotelAmount + activeSettlementTicket.cashLaundryAmount + activeSettlementTicket.qrisAmount + activeSettlementTicket.transferAmount + (activeSettlementTicket.discounts||0);
     
     if (window.settlementMode === 'complete') {
         if (Math.round(activeSettlementTicket.grandTotal) > Math.round(totalPaidNow)) {
-            alert("⚠️ Tagihan belum lunas sepenuhnya! Order tidak bisa diselesaikan (Ambil Layanan) hingga LUNAS.");
+            alert("⚠️ Tagihan belum lunas sepenuhnya! Order tidak bisa diselesaikan hingga LUNAS.");
             return; 
         }
         activeSettlementTicket.orderStatus = "Completed"; 
@@ -1227,9 +1279,12 @@ window.syncMasterData = async function(forceAwait = false) {
             
             window.globalSettings = result.data.settings || {};
             let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
+            let hasUnpaid = window.globalUnpaidOrders && window.globalUnpaidOrders.length > 0;
             let tabUnpaid = document.getElementById("tab-unpaid-orders");
+            
             if(tabUnpaid) {
-                if(payLaterEnabled) tabUnpaid.classList.remove("hidden");
+                // Tampilkan tab JIKA fitur diaktifkan ATAU ada pelanggan yang masih menunggak
+                if(payLaterEnabled || hasUnpaid) tabUnpaid.classList.remove("hidden");
                 else tabUnpaid.classList.add("hidden");
             }
 
