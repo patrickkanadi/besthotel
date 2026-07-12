@@ -1292,6 +1292,69 @@ window.submitCashDrop = function() {
     document.getElementById("cash-drop-modal").classList.add("hidden"); alert("Setoran berhasil dicatat!"); window.runBackgroundSync();
 };
 
+window.openEmergencyInbound = function() {
+    let select = document.getElementById("em-inbound-item");
+    select.innerHTML = "<option value=''>-- Pilih Item --</option>";
+    
+    // Hanya tampilkan item yang melacak stok
+    window.globalMenuData.forEach(item => {
+        if (item.trackStock) {
+            select.innerHTML += `<option value="${item.name}">${item.name} (Sisa Stok: ${item.currentStock})</option>`;
+        }
+    });
+    
+    document.getElementById("em-inbound-qty").value = 1;
+    document.getElementById("em-inbound-price").value = "";
+    document.getElementById("emergency-inbound-modal").classList.remove("hidden");
+};
+
+window.submitEmergencyInbound = async function() {
+    let itemName = document.getElementById("em-inbound-item").value;
+    let qty = Number(document.getElementById("em-inbound-qty").value);
+    let price = document.getElementById("em-inbound-price").value;
+
+    if (!itemName || qty <= 0) return alert("⚠️ Harap pilih item dan masukkan jumlah yang valid!");
+
+    let payload = {
+        action: "emergencyInbound",
+        data: {
+            timestamp: new Date().toISOString(),
+            itemName: itemName,
+            qty: qty,
+            price: price || "Tidak ada catatan harga",
+            cashier: currentCashier
+        }
+    };
+
+    // Optimistically update stock di UI kasir agar bisa langsung dijual
+    let menuItem = window.globalMenuData.find(m => m.name === itemName);
+    if(menuItem) menuItem.currentStock += qty;
+    window.renderProductGrid(); 
+
+    document.getElementById("emergency-inbound-modal").classList.add("hidden");
+    window.showToast("⏳ Mengirim Data Inbound Darurat...");
+
+    try {
+        const response = await fetch(`${API_URL}?action=emergencyInbound`, {
+            method: "POST",
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        
+        if (result.status === "Success") {
+            window.showToast("✅ Stok Darurat Berhasil Ditambah! Menunggu Auth Admin.");
+            window.syncMasterData(); // Tarik ulang data bersih dari server
+        } else {
+            throw new Error(result.message);
+        }
+    } catch(e) {
+        alert("⚠️ Gagal mengirim inbound: " + e);
+        // Rollback stok lokal jika gagal kirim ke server
+        if(menuItem) menuItem.currentStock -= qty; 
+        window.renderProductGrid();
+    }
+};
+
 window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot");
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; }
