@@ -1294,53 +1294,60 @@ window.submitCashDrop = function() {
 
 // Membuka modal dan mereset semua field
 window.openEmergencyInbound = function() {
-    document.getElementById("em-inbound-search").value = "";
+    let trackableItems = (window.globalMenuData || []).filter(m => m.trackStock);
+    let locs = [...new Set(trackableItems.map(m => m.location))];
+    
+    let locHtml = `<option value="">-- Pilih Lokasi --</option>`;
+    locs.sort().forEach(l => locHtml += `<option value="${l}">${l}</option>`);
+    
+    document.getElementById("em-inbound-loc").innerHTML = locHtml;
+    document.getElementById("em-inbound-cat").innerHTML = `<option value="">-- Pilih Kategori --</option>`;
+    document.getElementById("em-inbound-item").innerHTML = `<option value="">-- Pilih Item --</option>`;
+    
     document.getElementById("em-inbound-qty").value = 1;
     document.getElementById("em-inbound-price").value = 0;
     document.getElementById("em-inbound-notes").value = "";
-    
-    // Panggil fungsi populate untuk mengisi dropdown pertama kali
-    window.populateEmergencyInboundSelect(""); 
+    document.getElementById("em-inbound-total-text").innerText = "Rp 0";
     
     document.getElementById("emergency-inbound-modal").classList.remove("hidden");
 };
 
-// Fungsi aman untuk menyaring dan mencetak item ke dropdown
-window.populateEmergencyInboundSelect = function(keyword) {
-    let select = document.getElementById("em-inbound-item");
-    let html = "<option value=''>-- Pilih Item --</option>";
+window.filterEmInboundCat = function() {
+    let selLoc = document.getElementById("em-inbound-loc").value;
+    let trackableItems = (window.globalMenuData || []).filter(m => m.trackStock && m.location === selLoc);
+    let cats = [...new Set(trackableItems.map(m => m.category))];
     
-    // Safe check: Jika data belum ada, gunakan array kosong agar tidak error
-    let safeData = window.globalMenuData || [];
+    let catHtml = `<option value="">-- Pilih Kategori --</option>`;
+    cats.sort().forEach(c => catHtml += `<option value="${c}">${c}</option>`);
     
-    // Filter berdasarkan Track Stock DAN keyword pencarian
-    let filteredItems = safeData.filter(item => {
-        if (!item.trackStock) return false;
-        if (keyword && !item.name.toLowerCase().includes(keyword.toLowerCase())) return false;
-        return true;
-    });
-    
-    // Urutkan item sesuai abjad (A-Z) agar rapi
-    filteredItems.sort((a, b) => a.name.localeCompare(b.name));
-    
-    // Masukkan ke dalam HTML
-    filteredItems.forEach(item => {
-        html += `<option value="${item.name}">${item.name} (Sisa Stok: ${item.currentStock})</option>`;
-    });
-    
-    select.innerHTML = html;
+    document.getElementById("em-inbound-cat").innerHTML = catHtml;
+    document.getElementById("em-inbound-item").innerHTML = `<option value="">-- Pilih Item --</option>`;
 };
 
-// Fungsi yang dipanggil otomatis saat kasir mengetik di kolom pencarian
-window.filterEmergencyInbound = function() {
-    let keyword = document.getElementById("em-inbound-search").value;
-    window.populateEmergencyInboundSelect(keyword);
+window.filterEmInboundItem = function() {
+    let selLoc = document.getElementById("em-inbound-loc").value;
+    let selCat = document.getElementById("em-inbound-cat").value;
+    
+    let items = (window.globalMenuData || []).filter(m => m.trackStock && m.location === selLoc && m.category === selCat);
+    
+    let itemHtml = `<option value="">-- Pilih Item --</option>`;
+    items.sort((a,b) => a.name.localeCompare(b.name)).forEach(i => {
+        itemHtml += `<option value="${i.name}">${i.name} (Sisa: ${i.currentStock})</option>`;
+    });
+    
+    document.getElementById("em-inbound-item").innerHTML = itemHtml;
+};
+
+window.calcEmTotal = function() {
+    let qty = Number(document.getElementById("em-inbound-qty").value) || 0;
+    let price = Number(document.getElementById("em-inbound-price").value) || 0;
+    document.getElementById("em-inbound-total-text").innerText = "Rp " + (qty * price).toLocaleString('id-ID');
 };
 
 window.submitEmergencyInbound = async function() {
     let itemName = document.getElementById("em-inbound-item").value;
     let qty = Number(document.getElementById("em-inbound-qty").value);
-    let price = Number(document.getElementById("em-inbound-price").value) || 0;
+    let unitPrice = Number(document.getElementById("em-inbound-price").value) || 0;
     let notes = document.getElementById("em-inbound-notes").value;
 
     if (!itemName || qty <= 0) return alert("⚠️ Harap pilih item dan masukkan jumlah yang valid!");
@@ -1351,7 +1358,7 @@ window.submitEmergencyInbound = async function() {
             timestamp: new Date().toISOString(),
             itemName: itemName,
             qty: qty,
-            price: price,
+            unitPrice: unitPrice,
             notes: notes,
             cashier: currentCashier
         }
@@ -1362,7 +1369,7 @@ window.submitEmergencyInbound = async function() {
     window.renderProductGrid(); 
 
     document.getElementById("emergency-inbound-modal").classList.add("hidden");
-    window.showToast("⏳ Mengirim Data Inbound Darurat...");
+    window.showToast("⏳ Mengirim Data Inbound...");
 
     try {
         const response = await fetch(`${API_URL}?action=emergencyInbound`, {
@@ -1372,11 +1379,9 @@ window.submitEmergencyInbound = async function() {
         const result = await response.json();
         
         if (result.status === "Success") {
-            window.showToast("✅ Stok Darurat Berhasil Ditambah! Menunggu Auth Admin.");
+            window.showToast("✅ Stok Darurat Berhasil Ditambah!");
             window.syncMasterData(); 
-        } else {
-            throw new Error(result.message);
-        }
+        } else throw new Error(result.message);
     } catch(e) {
         alert("⚠️ Gagal mengirim inbound: " + e);
         if(menuItem) menuItem.currentStock -= qty; 
