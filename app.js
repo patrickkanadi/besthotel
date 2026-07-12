@@ -1302,7 +1302,10 @@ window.openEmergencyInbound = function() {
     
     document.getElementById("em-inbound-loc").innerHTML = locHtml;
     document.getElementById("em-inbound-cat").innerHTML = `<option value="">-- Pilih Kategori --</option>`;
-    document.getElementById("em-inbound-item").innerHTML = `<option value="">-- Pilih Item --</option>`;
+    
+    // Reset kolom input dan daftar autocomplete
+    document.getElementById("em-inbound-item").value = "";
+    document.getElementById("em-inbound-item-list").innerHTML = "";
     
     document.getElementById("em-inbound-qty").value = 1;
     document.getElementById("em-inbound-price").value = 0;
@@ -1321,7 +1324,10 @@ window.filterEmInboundCat = function() {
     cats.sort().forEach(c => catHtml += `<option value="${c}">${c}</option>`);
     
     document.getElementById("em-inbound-cat").innerHTML = catHtml;
-    document.getElementById("em-inbound-item").innerHTML = `<option value="">-- Pilih Item --</option>`;
+    
+    // Reset kolom input setiap kali kategori berubah
+    document.getElementById("em-inbound-item").value = "";
+    document.getElementById("em-inbound-item-list").innerHTML = "";
 };
 
 window.filterEmInboundItem = function() {
@@ -1330,12 +1336,14 @@ window.filterEmInboundItem = function() {
     
     let items = (window.globalMenuData || []).filter(m => m.trackStock && m.location === selLoc && m.category === selCat);
     
-    let itemHtml = `<option value="">-- Pilih Item --</option>`;
+    let itemHtml = ``;
     items.sort((a,b) => a.name.localeCompare(b.name)).forEach(i => {
-        itemHtml += `<option value="${i.name}">${i.name} (Sisa: ${i.currentStock})</option>`;
+        // Ini akan muncul sebagai saran autocomplete saat kasir mengetik/klik
+        itemHtml += `<option value="${i.name}">Sisa Stok: ${i.currentStock}</option>`;
     });
     
-    document.getElementById("em-inbound-item").innerHTML = itemHtml;
+    document.getElementById("em-inbound-item-list").innerHTML = itemHtml;
+    document.getElementById("em-inbound-item").value = "";
 };
 
 window.calcEmTotal = function() {
