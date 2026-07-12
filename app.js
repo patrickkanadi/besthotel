@@ -1532,70 +1532,48 @@ window.renderUnpaidOrders = function() {
 window.manualPushSync = async function() { await window.runBackgroundSync(); await window.syncMasterData(); alert("Sinkronisasi Database Berhasil!"); };
 
 window.runBackgroundSync = async function() {
-    if (!navigator.onLine || isSyncing) return; isSyncing = true; 
+    if (!navigator.onLine || isSyncing) return; 
+    isSyncing = true; 
     try {
-        let orders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
-        for (const order of orders) {
-            if (order.syncStatus === "Pending") {
-                try {
-                    let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncOrder", data: order }) });
-                    order.syncStatus = "Synced"; db.transaction(["orders"], "readwrite").objectStore("orders").put(order); 
-                } catch(e) {}
+        // Fungsi helper cerdas untuk memproses setiap antrean data
+        const syncItem = async (storeName, actionName, idField, deleteOnSuccess = false) => {
+            let items = await new Promise(res => db.transaction([storeName], "readonly").objectStore(storeName).getAll().onsuccess = e => res(e.target.result));
+            
+            for (const item of items) {
+                // Proses jika statusnya Pending ATAU jika ini tipe data yang harus dihapus setelah dikirim
+                if (item.syncStatus === "Pending" || deleteOnSuccess) { 
+                    try {
+                        let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: actionName, data: item }) });
+                        let resData = await r.json();
+                        
+                        // HANYA tandai selesai JIKA server menjawab "Success"
+                        if (resData.status === "Success") {
+                            if (deleteOnSuccess) {
+                                db.transaction([storeName], "readwrite").objectStore(storeName).delete(item[idField]);
+                            } else {
+                                item.syncStatus = "Synced"; 
+                                db.transaction([storeName], "readwrite").objectStore(storeName).put(item); 
+                            }
+                        }
+                    } catch(e) {
+                        console.error("Gagal sinkronisasi antrean:", storeName, e);
+                    }
+                }
             }
-        }
+        };
 
-        let expenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
-        for (const exp of expenses) {
-            if (exp.syncStatus === "Pending") {
-                try {
-                    let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncExpense", data: exp }) });
-                    exp.syncStatus = "Synced"; db.transaction(["expenses"], "readwrite").objectStore("expenses").put(exp); 
-                } catch(e) {}
-            }
-        }
+        // Eksekusi semua antrean secara berurutan
+        await syncItem("orders", "syncOrder", "orderId");
+        await syncItem("expenses", "syncExpense", "expenseId");
+        await syncItem("cash_drops", "syncCashDrop", "dropId", true);
+        await syncItem("shift_reports", "syncShiftReport", "shiftId", true);
+        await syncItem("void_requests", "requestVoid", "id", true);
+        await syncItem("stock_inbounds", "confirmInbound", "inboundId", true);
+        await syncItem("stock_opnames", "syncOpname", "opnameId", true);
 
-        let cashDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
-        for (const drop of cashDrops) {
-            try {
-                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncCashDrop", data: drop }) });
-                db.transaction(["cash_drops"], "readwrite").objectStore("cash_drops").delete(drop.dropId);
-            } catch(e) {}
-        }
-
-        let reports = await new Promise(res => db.transaction(["shift_reports"], "readonly").objectStore("shift_reports").getAll().onsuccess = e => res(e.target.result));
-        for (const report of reports) {
-            try {
-                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncShiftReport", data: report }) });
-                db.transaction(["shift_reports"], "readwrite").objectStore("shift_reports").delete(report.shiftId);
-            } catch(e) {}
-        }
-
-        // MOVED INSIDE runBackgroundSync!
-        let voids = await new Promise(res => db.transaction(["void_requests"], "readonly").objectStore("void_requests").getAll().onsuccess = e => res(e.target.result));
-        for (const req of voids) {
-            try {
-                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "requestVoid", data: req }) });
-                db.transaction(["void_requests"], "readwrite").objectStore("void_requests").delete(req.id);
-            } catch(e) {}
-        }
-
-        let inbounds = await new Promise(res => db.transaction(["stock_inbounds"], "readonly").objectStore("stock_inbounds").getAll().onsuccess = e => res(e.target.result));
-        for (const inb of inbounds) {
-            try {
-                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "confirmInbound", data: inb }) });
-                db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").delete(inb.inboundId);
-            } catch(e) {}
-        }
-
-        let opnames = await new Promise(res => db.transaction(["stock_opnames"], "readonly").objectStore("stock_opnames").getAll().onsuccess = e => res(e.target.result));
-        for (const opn of opnames) {
-            try {
-                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: "syncOpname", data: opn }) });
-                db.transaction(["stock_opnames"], "readwrite").objectStore("stock_opnames").delete(opn.opnameId);
-            } catch(e) {}
-        }
-
-    } finally { isSyncing = false; }
+    } finally { 
+        isSyncing = false; 
+    }
 };
 
 // ==========================================
