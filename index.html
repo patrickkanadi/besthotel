@@ -309,8 +309,9 @@
             </div>
             
             <div class="form-box" style="margin-bottom:15px;">
-                <label>3. Pilih Item</label>
-                <select id="em-inbound-item" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;"></select>
+                <label>3. Cari / Pilih Item (Bisa Ketik)</label>
+                <input list="em-inbound-item-list" id="em-inbound-item" placeholder="🔍 Ketik nama atau pilih..." onchange="window.calcEmTotal()" autocomplete="off" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;">
+                <datalist id="em-inbound-item-list"></datalist>
             </div>
 
             <div style="display:flex; gap:10px; margin-bottom:10px;">
