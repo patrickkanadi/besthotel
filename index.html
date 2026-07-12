@@ -297,32 +297,46 @@
     <div id="emergency-inbound-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h2 style="margin-top:0; color:#d35400;">🚨 Inbound Stok Darurat</h2>
-            <p style="font-size:13px; color:#7f8c8d; margin-bottom:15px;">Gunakan hanya untuk penambahan stok mendesak. Membutuhkan persetujuan (Auth) dari Admin di Spreadsheet.</p>
             
             <div class="form-box" style="margin-bottom:10px;">
-                <label>Cari & Pilih Item</label>
-                <input type="text" id="em-inbound-search" placeholder="🔍 Ketik nama item..." oninput="window.filterEmergencyInbound()" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7; margin-bottom:8px;">
-                <select id="em-inbound-item" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;"></select>
+                <label>1. Lokasi</label>
+                <select id="em-inbound-loc" onchange="window.filterEmInboundCat()" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;"></select>
             </div>
             
             <div class="form-box" style="margin-bottom:10px;">
-                <label>Jumlah Masuk (Qty)</label>
-                <input type="number" id="em-inbound-qty" value="1" min="1" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;">
-            </div>
-            
-            <div class="form-box" style="margin-bottom:10px;">
-                <label>Total Harga Beli (Rp)</label>
-                <input type="number" id="em-inbound-price" value="0" min="0" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;">
+                <label>2. Kategori</label>
+                <select id="em-inbound-cat" onchange="window.filterEmInboundItem()" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;"></select>
             </div>
             
             <div class="form-box" style="margin-bottom:15px;">
-                <label>Catatan Tambahan (Opsional)</label>
-                <input type="text" id="em-inbound-notes" placeholder="Contoh: Beli di Indomaret depan" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;">
+                <label>3. Pilih Item</label>
+                <select id="em-inbound-item" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;"></select>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-bottom:10px;">
+                <div class="form-box" style="flex:1;">
+                    <label>Qty Masuk</label>
+                    <input type="number" id="em-inbound-qty" value="1" min="1" oninput="window.calcEmTotal()" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;">
+                </div>
+                <div class="form-box" style="flex:1;">
+                    <label>Harga Satuan (Rp)</label>
+                    <input type="number" id="em-inbound-price" value="0" min="0" oninput="window.calcEmTotal()" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;">
+                </div>
+            </div>
+
+            <div class="form-box" style="margin-bottom:15px; text-align:right;">
+                <span style="font-size:14px; color:#7f8c8d;">Total Harga:</span>
+                <span id="em-inbound-total-text" style="font-size:18px; font-weight:bold; color:#d35400; margin-left:10px;">Rp 0</span>
+            </div>
+            
+            <div class="form-box" style="margin-bottom:15px;">
+                <label>Catatan (Opsional)</label>
+                <input type="text" id="em-inbound-notes" placeholder="Contoh: Beli di Indomaret" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;">
             </div>
             
             <div style="display:flex; gap:10px; margin-top:20px;">
                 <button onclick="document.getElementById('emergency-inbound-modal').classList.add('hidden')" style="flex:1; padding:12px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold;">Batal</button>
-                <button onclick="window.submitEmergencyInbound()" style="flex:2; padding:12px; background:#e67e22; color:white; border:none; border-radius:8px; font-weight:bold;">Submit & Tambah Stok</button>
+                <button onclick="window.submitEmergencyInbound()" style="flex:2; padding:12px; background:#e67e22; color:white; border:none; border-radius:8px; font-weight:bold;">Submit Stok</button>
             </div>
         </div>
     </div>
