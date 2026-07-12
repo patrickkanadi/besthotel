@@ -1527,21 +1527,16 @@ window.renderUnpaidOrders = function() {
 };
 
 window.manualPushSync = async function() { 
-    // Cari tombol sync yang sedang ditekan
     let btn = document.querySelector("button[onclick*='manualPushSync']") || document.getElementById("btn-sync");
     let originalText = btn ? btn.innerHTML : "Sync";
     
-    // Ubah text tombol menjadi Syncing
     if (btn) btn.innerHTML = "⏳ Syncing...";
-    
     
     await window.runBackgroundSync(); 
     await window.syncMasterData(true); 
     
-    // Kembalikan text aslinya setelah selesai
     if (btn) btn.innerHTML = originalText;
-    
-    else alert("Sinkronisasi Database Berhasil!"); 
+    alert("Sinkronisasi Database Berhasil!"); 
 };
 
 window.runBackgroundSync = async function() {
@@ -1633,8 +1628,9 @@ window.confirmInboundItem = function(index, inboundId) {
 
     let payload = { 
         inboundId: inboundId, 
-        itemName: inbItem.itemName, // Tambahan vital
-        date: inbItem.date,         // Tambahan vital
+        row: inbItem.row,           // 🎯 Pass Row Index Directly!
+        itemName: inbItem.itemName, 
+        date: inbItem.date,         
         qtyReceived: actualQty, 
         cashier: currentCashier, 
         syncStatus: "Pending" 
@@ -1642,8 +1638,13 @@ window.confirmInboundItem = function(index, inboundId) {
     
     db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").add(payload);
     
-    let mItem = globalMenuData.find(m => m.name === inbItem.itemName);
-    if(mItem) mItem.currentStock += actualQty;
+    // UI Optimistic Update: HANYA tambah stok jika sesuai. Jika ada selisih, diamkan (menunggu Auth).
+    if (actualQty === inbItem.qtySent) {
+        let mItem = window.globalMenuData.find(m => m.name === inbItem.itemName);
+        if(mItem) mItem.currentStock += actualQty;
+    } else {
+        alert(`⚠️ Terdapat selisih jumlah! (Dikirim: ${inbItem.qtySent}, Diterima: ${actualQty}).\nItem ditandai "Pending Auth" menunggu persetujuan Admin.`);
+    }
     
     window.globalPendingInbounds = window.globalPendingInbounds.filter(x => x.inboundId !== inboundId);
     window.openInboundModal(); 
