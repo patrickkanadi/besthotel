@@ -1292,20 +1292,49 @@ window.submitCashDrop = function() {
     document.getElementById("cash-drop-modal").classList.add("hidden"); alert("Setoran berhasil dicatat!"); window.runBackgroundSync();
 };
 
+// Membuka modal dan mereset semua field
 window.openEmergencyInbound = function() {
-    let select = document.getElementById("em-inbound-item");
-    select.innerHTML = "<option value=''>-- Pilih Item --</option>";
-    
-    window.globalMenuData.forEach(item => {
-        if (item.trackStock) {
-            select.innerHTML += `<option value="${item.name}">${item.name} (Sisa Stok: ${item.currentStock})</option>`;
-        }
-    });
-    
+    document.getElementById("em-inbound-search").value = "";
     document.getElementById("em-inbound-qty").value = 1;
     document.getElementById("em-inbound-price").value = 0;
     document.getElementById("em-inbound-notes").value = "";
+    
+    // Panggil fungsi populate untuk mengisi dropdown pertama kali
+    window.populateEmergencyInboundSelect(""); 
+    
     document.getElementById("emergency-inbound-modal").classList.remove("hidden");
+};
+
+// Fungsi aman untuk menyaring dan mencetak item ke dropdown
+window.populateEmergencyInboundSelect = function(keyword) {
+    let select = document.getElementById("em-inbound-item");
+    let html = "<option value=''>-- Pilih Item --</option>";
+    
+    // Safe check: Jika data belum ada, gunakan array kosong agar tidak error
+    let safeData = window.globalMenuData || [];
+    
+    // Filter berdasarkan Track Stock DAN keyword pencarian
+    let filteredItems = safeData.filter(item => {
+        if (!item.trackStock) return false;
+        if (keyword && !item.name.toLowerCase().includes(keyword.toLowerCase())) return false;
+        return true;
+    });
+    
+    // Urutkan item sesuai abjad (A-Z) agar rapi
+    filteredItems.sort((a, b) => a.name.localeCompare(b.name));
+    
+    // Masukkan ke dalam HTML
+    filteredItems.forEach(item => {
+        html += `<option value="${item.name}">${item.name} (Sisa Stok: ${item.currentStock})</option>`;
+    });
+    
+    select.innerHTML = html;
+};
+
+// Fungsi yang dipanggil otomatis saat kasir mengetik di kolom pencarian
+window.filterEmergencyInbound = function() {
+    let keyword = document.getElementById("em-inbound-search").value;
+    window.populateEmergencyInboundSelect(keyword);
 };
 
 window.submitEmergencyInbound = async function() {
