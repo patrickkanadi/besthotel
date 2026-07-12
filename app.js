@@ -1294,7 +1294,7 @@ window.submitCashDrop = function() {
 
 // Membuka modal dan mereset semua field
 window.openEmergencyInbound = function() {
-    let trackableItems = (window.globalMenuData || []).filter(m => m.trackStock);
+    let trackableItems = globalMenuData.filter(m => m.trackStock);
     let locs = [...new Set(trackableItems.map(m => m.location))];
     
     let locHtml = `<option value="">-- Pilih Lokasi --</option>`;
@@ -1303,7 +1303,6 @@ window.openEmergencyInbound = function() {
     document.getElementById("em-inbound-loc").innerHTML = locHtml;
     document.getElementById("em-inbound-cat").innerHTML = `<option value="">-- Pilih Kategori --</option>`;
     
-    // Reset kolom input dan daftar autocomplete
     document.getElementById("em-inbound-item").value = "";
     document.getElementById("em-inbound-item-list").innerHTML = "";
     
@@ -1317,7 +1316,7 @@ window.openEmergencyInbound = function() {
 
 window.filterEmInboundCat = function() {
     let selLoc = document.getElementById("em-inbound-loc").value;
-    let trackableItems = (window.globalMenuData || []).filter(m => m.trackStock && m.location === selLoc);
+    let trackableItems = globalMenuData.filter(m => m.trackStock && m.location === selLoc);
     let cats = [...new Set(trackableItems.map(m => m.category))];
     
     let catHtml = `<option value="">-- Pilih Kategori --</option>`;
@@ -1325,7 +1324,6 @@ window.filterEmInboundCat = function() {
     
     document.getElementById("em-inbound-cat").innerHTML = catHtml;
     
-    // Reset kolom input setiap kali kategori berubah
     document.getElementById("em-inbound-item").value = "";
     document.getElementById("em-inbound-item-list").innerHTML = "";
 };
@@ -1334,11 +1332,10 @@ window.filterEmInboundItem = function() {
     let selLoc = document.getElementById("em-inbound-loc").value;
     let selCat = document.getElementById("em-inbound-cat").value;
     
-    let items = (window.globalMenuData || []).filter(m => m.trackStock && m.location === selLoc && m.category === selCat);
+    let items = globalMenuData.filter(m => m.trackStock && m.location === selLoc && m.category === selCat);
     
     let itemHtml = ``;
     items.sort((a,b) => a.name.localeCompare(b.name)).forEach(i => {
-        // Ini akan muncul sebagai saran autocomplete saat kasir mengetik/klik
         itemHtml += `<option value="${i.name}">Sisa Stok: ${i.currentStock}</option>`;
     });
     
@@ -1529,7 +1526,23 @@ window.renderUnpaidOrders = function() {
     } catch(err) { console.error("Critical renderUnpaidOrders", err); }
 };
 
-window.manualPushSync = async function() { await window.runBackgroundSync(); await window.syncMasterData(); alert("Sinkronisasi Database Berhasil!"); };
+window.manualPushSync = async function() { 
+    // Cari tombol sync yang sedang ditekan
+    let btn = document.querySelector("button[onclick*='manualPushSync']") || document.getElementById("btn-sync");
+    let originalText = btn ? btn.innerHTML : "Sync";
+    
+    // Ubah text tombol menjadi Syncing
+    if (btn) btn.innerHTML = "⏳ Syncing...";
+    if (typeof window.showToast === 'function') window.showToast("⏳ Sedang sinkronisasi data...");
+    
+    await window.runBackgroundSync(); 
+    await window.syncMasterData(true); 
+    
+    // Kembalikan text aslinya setelah selesai
+    if (btn) btn.innerHTML = originalText;
+    if (typeof window.showToast === 'function') window.showToast("✅ Sinkronisasi Selesai!");
+    else alert("Sinkronisasi Database Berhasil!"); 
+};
 
 window.runBackgroundSync = async function() {
     if (!navigator.onLine || isSyncing) return; 
@@ -1618,16 +1631,23 @@ window.confirmInboundItem = function(index, inboundId) {
     
     if(!confirm(`Anda yakin menerima fisik ${actualQty}x ${inbItem.itemName}?`)) return;
 
-    let payload = { inboundId: inboundId, qtyReceived: actualQty, cashier: currentCashier, syncStatus: "Pending" };
+    let payload = { 
+        inboundId: inboundId, 
+        itemName: inbItem.itemName, // Tambahan vital
+        date: inbItem.date,         // Tambahan vital
+        qtyReceived: actualQty, 
+        cashier: currentCashier, 
+        syncStatus: "Pending" 
+    };
+    
     db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").add(payload);
     
-    // Update local cache & UI immediately
     let mItem = globalMenuData.find(m => m.name === inbItem.itemName);
     if(mItem) mItem.currentStock += actualQty;
     
     window.globalPendingInbounds = window.globalPendingInbounds.filter(x => x.inboundId !== inboundId);
-    window.openInboundModal(); // Refresh modal
-    window.renderProductGrid(); // Refresh stock UI
+    window.openInboundModal(); 
+    window.renderProductGrid(); 
     window.runBackgroundSync();
 };
 
