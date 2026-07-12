@@ -1296,7 +1296,6 @@ window.openEmergencyInbound = function() {
     let select = document.getElementById("em-inbound-item");
     select.innerHTML = "<option value=''>-- Pilih Item --</option>";
     
-    // Hanya tampilkan item yang melacak stok
     window.globalMenuData.forEach(item => {
         if (item.trackStock) {
             select.innerHTML += `<option value="${item.name}">${item.name} (Sisa Stok: ${item.currentStock})</option>`;
@@ -1304,14 +1303,16 @@ window.openEmergencyInbound = function() {
     });
     
     document.getElementById("em-inbound-qty").value = 1;
-    document.getElementById("em-inbound-price").value = "";
+    document.getElementById("em-inbound-price").value = 0;
+    document.getElementById("em-inbound-notes").value = "";
     document.getElementById("emergency-inbound-modal").classList.remove("hidden");
 };
 
 window.submitEmergencyInbound = async function() {
     let itemName = document.getElementById("em-inbound-item").value;
     let qty = Number(document.getElementById("em-inbound-qty").value);
-    let price = document.getElementById("em-inbound-price").value;
+    let price = Number(document.getElementById("em-inbound-price").value) || 0;
+    let notes = document.getElementById("em-inbound-notes").value;
 
     if (!itemName || qty <= 0) return alert("⚠️ Harap pilih item dan masukkan jumlah yang valid!");
 
@@ -1321,12 +1322,12 @@ window.submitEmergencyInbound = async function() {
             timestamp: new Date().toISOString(),
             itemName: itemName,
             qty: qty,
-            price: price || "Tidak ada catatan harga",
+            price: price,
+            notes: notes,
             cashier: currentCashier
         }
     };
 
-    // Optimistically update stock di UI kasir agar bisa langsung dijual
     let menuItem = window.globalMenuData.find(m => m.name === itemName);
     if(menuItem) menuItem.currentStock += qty;
     window.renderProductGrid(); 
@@ -1343,13 +1344,12 @@ window.submitEmergencyInbound = async function() {
         
         if (result.status === "Success") {
             window.showToast("✅ Stok Darurat Berhasil Ditambah! Menunggu Auth Admin.");
-            window.syncMasterData(); // Tarik ulang data bersih dari server
+            window.syncMasterData(); 
         } else {
             throw new Error(result.message);
         }
     } catch(e) {
         alert("⚠️ Gagal mengirim inbound: " + e);
-        // Rollback stok lokal jika gagal kirim ke server
         if(menuItem) menuItem.currentStock -= qty; 
         window.renderProductGrid();
     }
@@ -1713,8 +1713,9 @@ window.submitOpname = function() {
                     opnameId: "OPN-" + Date.now() + "-" + m.itemId, timestamp: new Date().toISOString(), cashier: currentCashier, 
                     itemName: m.name, systemStock: m.currentStock, physicalStock: physStock, difference: diff, notes: note, syncStatus: "Pending" 
                 };
+                
                 db.transaction(["stock_opnames"], "readwrite").objectStore("stock_opnames").add(payload);
-                m.currentStock = physStock; // Update local memory immediately
+                m.currentStock = physStock; // Optimistic update: langsung ubah di layar kasir
                 changesMade++;
             }
         }
@@ -1723,7 +1724,14 @@ window.submitOpname = function() {
     if (changesMade === 0) return alert("Tidak ada perubahan stok fisik yang dimasukkan.");
     
     document.getElementById("opname-modal").classList.add("hidden");
-    alert(`${changesMade} item stok berhasil diperbarui!`);
+    
+    // Tampilkan Notifikasi Sistem "Pending Auth"
+    if (typeof window.showToast === 'function') {
+        window.showToast(`✅ ${changesMade} Laporan Opname dicatat! Menunggu Auth Admin.`);
+    } else {
+        alert(`✅ ${changesMade} Laporan Opname dicatat! Status: Menunggu Auth Admin.`);
+    }
+    
     window.renderProductGrid();
     window.runBackgroundSync();
 };
