@@ -121,6 +121,7 @@
                 <button class="btn-top" id="btn-printer" style="background:#bdc3c7; border-color:#bdc3c7;" onclick="connectBluetoothPrinter()">🖨️ Printer: Offline</button>
                 <button class="btn-top" style="background:#34495e; border-color:#34495e;" onclick="manualPushSync()">🔄 Sinkron</button>
                 <button class="btn-top" style="background:#9b59b6; border-color:#9b59b6;" onclick="openInboundModal()">📦 Stok Masuk</button>
+                <button onclick="window.openEmergencyInbound()" style="background:#e67e22; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">🚨 Inbound Darurat</button>
                 <button class="btn-top" style="background:#34495e; border-color:#34495e;" onclick="openOpnameModal()">📋 Opname</button>
                 <button class="btn-top" id="btn-drawer" style="background:#16a085; border-color:#16a085;" onclick="openCashDrop(false)">🏦 Laci Uang</button>
                 <button class="btn-top" style="background:#8e44ad; border-color:#8e44ad;" onclick="openHistoryModal()">📋 Riwayat</button>
@@ -289,6 +290,33 @@
             <div style="display:flex; gap:10px; margin-top:20px;">
                 <button onclick="document.getElementById('settlement-modal').classList.add('hidden')" style="flex:1; padding:12px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold;">Batal</button>
                 <button onclick="confirmSettlement()" style="flex:2; padding:12px; background:#27ae60; color:white; border:none; border-radius:8px; font-weight:bold;">Konfirmasi Pembayaran</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="emergency-inbound-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 style="margin-top:0; color:#d35400;">🚨 Inbound Stok Darurat</h2>
+            <p style="font-size:13px; color:#7f8c8d; margin-bottom:15px;">Gunakan hanya untuk penambahan stok mendesak. Membutuhkan persetujuan (Auth) dari Admin di Spreadsheet.</p>
+            
+            <div class="form-box" style="margin-bottom:10px;">
+                <label>Pilih Item Menu</label>
+                <select id="em-inbound-item" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;"></select>
+            </div>
+            
+            <div class="form-box" style="margin-bottom:10px;">
+                <label>Jumlah Masuk (Qty)</label>
+                <input type="number" id="em-inbound-qty" value="1" min="1" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;">
+            </div>
+            
+            <div class="form-box" style="margin-bottom:15px;">
+                <label>Harga Beli / Catatan Tambahan</label>
+                <input type="text" id="em-inbound-price" placeholder="Contoh: Rp 50.000 (Beli di Indomaret)" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;">
+            </div>
+            
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button onclick="document.getElementById('emergency-inbound-modal').classList.add('hidden')" style="flex:1; padding:12px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold;">Batal</button>
+                <button onclick="window.submitEmergencyInbound()" style="flex:2; padding:12px; background:#e67e22; color:white; border:none; border-radius:8px; font-weight:bold;">Submit & Tambah Stok</button>
             </div>
         </div>
     </div>
