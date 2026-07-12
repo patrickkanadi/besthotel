@@ -1533,14 +1533,14 @@ window.manualPushSync = async function() {
     
     // Ubah text tombol menjadi Syncing
     if (btn) btn.innerHTML = "⏳ Syncing...";
-    if (typeof window.showToast === 'function') window.showToast("⏳ Sedang sinkronisasi data...");
+    
     
     await window.runBackgroundSync(); 
     await window.syncMasterData(true); 
     
     // Kembalikan text aslinya setelah selesai
     if (btn) btn.innerHTML = originalText;
-    if (typeof window.showToast === 'function') window.showToast("✅ Sinkronisasi Selesai!");
+    
     else alert("Sinkronisasi Database Berhasil!"); 
 };
 
