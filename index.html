@@ -300,7 +300,8 @@
             <p style="font-size:13px; color:#7f8c8d; margin-bottom:15px;">Gunakan hanya untuk penambahan stok mendesak. Membutuhkan persetujuan (Auth) dari Admin di Spreadsheet.</p>
             
             <div class="form-box" style="margin-bottom:10px;">
-                <label>Pilih Item Menu</label>
+                <label>Cari & Pilih Item</label>
+                <input type="text" id="em-inbound-search" placeholder="🔍 Ketik nama item..." oninput="window.filterEmergencyInbound()" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7; margin-bottom:8px;">
                 <select id="em-inbound-item" style="width:100%; padding:10px; border-radius:5px; border:1px solid #bdc3c7;"></select>
             </div>
             
