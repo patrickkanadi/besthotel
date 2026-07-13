@@ -102,9 +102,15 @@
             #print-area { display: none !important; }
         }
         
-        /* CSS Khusus untuk Print Kertas A4 Portrait (Hanya Setengah Atas) */
+        /* Pengaturan Print Bebas (Javascript akan mengatur Kiri/Kanan vs Penuh) */
         @media print {
-            body * { visibility: hidden; }
+            @page {
+                size: A4 portrait;
+                margin: 5mm; 
+            }
+            /* Sembunyikan POS Utama */
+            body > *:not(#print-area) { display: none !important; }
+            
             #print-area, #print-area * { visibility: visible; }
             #print-area {
                 display: block !important;
@@ -112,15 +118,9 @@
                 left: 0; 
                 top: 0; 
                 width: 100%;
-                height: 148mm; /* Membatasi tinggi persis setengah kertas A4 */
-                background: #fff; 
-                color: #000; 
+                background: white; 
+                color: black; 
                 font-family: Arial, sans-serif;
-                overflow: hidden; /* Mencegah tulisan memanjang ke bawah */
-            }
-            @page {
-                size: A4 portrait; /* Menggunakan Kertas Berdiri */
-                margin: 5mm; 
             }
         }
     </style>
