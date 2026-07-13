@@ -1207,21 +1207,39 @@ window.saveExpense = function() {
 };
 
 window.requestVoid = function(type, id) {
-    currentVoidTarget = { type: type, id: id };
-    document.getElementById("void-auth-modal").classList.remove("hidden");
-};
-
-window.submitVoidRequest = function() {
-    let payload = { id: currentVoidTarget.id, type: currentVoidTarget.type, status: "Void Pending", syncStatus: "Pending" };
-    db.transaction(["void_requests"], "readwrite").objectStore("void_requests").add(payload);
+    let authPin = prompt("Masukkan Master PIN untuk Otorisasi Instan\n(Atau kosongkan & klik OK untuk mengirim permohonan ke Admin):");
     
-    document.getElementById("void-auth-modal").classList.add("hidden");
-    alert("Permintaan pembatalan dikirim ke server. Menunggu persetujuan Admin.");
-    window.runBackgroundSync();
-    
-    if(currentVoidTarget.type === 'orders') { let o = window.globalRecentOrders.find(x => x.orderId === currentVoidTarget.id); if(o) o.orderStatus = "Void Pending"; window.renderHistoryList('orders'); }
-    if(currentVoidTarget.type === 'expenses') { let e = window.globalRecentExpenses.find(x => x.expenseId === currentVoidTarget.id); if(e) e.status = "Void Pending"; window.renderHistoryList('expenses'); }
-    if(currentVoidTarget.type === 'shifts') { let s = window.globalRecentShifts.find(x => x.shiftId === currentVoidTarget.id); if(s) s.status = "Void Pending"; window.renderHistoryList('shifts'); }
+    if (authPin !== null) {
+        if (authPin.trim() !== "") {
+            hashString(authPin).then(hashed => {
+                if (hashed === window.globalSettings["Master_PIN"]) {
+                    // PIN BENAR -> Otorisasi Instan
+                    let payload = { id: id, type: type, status: "Voided", syncStatus: "Pending" };
+                    db.transaction(["void_requests"], "readwrite").objectStore("void_requests").add(payload);
+                    
+                    if(type === 'orders') { let o = window.globalRecentOrders.find(x => x.orderId === id); if(o) o.orderStatus = "Voided"; window.renderHistoryList('orders'); }
+                    if(type === 'expenses') { let e = window.globalRecentExpenses.find(x => x.expenseId === id); if(e) e.status = "Voided"; window.renderHistoryList('expenses'); }
+                    if(type === 'shifts') { let s = window.globalRecentShifts.find(x => x.shiftId === id); if(s) s.status = "Voided"; window.renderHistoryList('shifts'); }
+                    
+                    alert("✅ Otorisasi Berhasil! Transaksi dibatalkan secara instan dan stok dikembalikan.");
+                    window.runBackgroundSync();
+                } else {
+                    alert("⚠️ Master PIN Salah!");
+                }
+            });
+        } else {
+            // PIN KOSONG -> Minta Persetujuan Admin (Normal)
+            let payload = { id: id, type: type, status: "Void Pending", syncStatus: "Pending" };
+            db.transaction(["void_requests"], "readwrite").objectStore("void_requests").add(payload);
+            
+            if(type === 'orders') { let o = window.globalRecentOrders.find(x => x.orderId === id); if(o) o.orderStatus = "Void Pending"; window.renderHistoryList('orders'); }
+            if(type === 'expenses') { let e = window.globalRecentExpenses.find(x => x.expenseId === id); if(e) e.status = "Void Pending"; window.renderHistoryList('expenses'); }
+            if(type === 'shifts') { let s = window.globalRecentShifts.find(x => x.shiftId === id); if(s) s.status = "Void Pending"; window.renderHistoryList('shifts'); }
+            
+            alert("Permintaan pembatalan dikirim. Menunggu persetujuan Admin di Spreadsheet.");
+            window.runBackgroundSync();
+        }
+    }
 };
 
 
