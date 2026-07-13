@@ -47,36 +47,54 @@ window.setPrintMode = function(mode) {
 };
 
 // ==========================================
-// ENGINE A4 SPLIT PRINT (KIRI & KANAN)
+// ENGINE A4 PRINT (SMART ROUTING)
 // ==========================================
-window.printStandardGlobal = function(title, contentHtml, totalHtml, footerText) {
+window.printStandardGlobal = function(title, contentHtml, totalHtml, footerText, layout = 'split') {
     let printArea = document.getElementById("print-area");
     if (!printArea) return alert("Error: Area print tidak ditemukan di HTML.");
 
-    // Template untuk satu sisi (Muat di dalam Setengah A4)
-    let singleReceipt = `
-        <div style="padding:15px; border:1px solid #000; height: 100%; box-sizing: border-box; border-radius:8px;">
-            <div style="text-align:center; font-weight:900; font-size:22px; margin-bottom:5px; letter-spacing:1px;">HOTEL POS</div>
-            <div style="text-align:center; font-weight:bold; font-size:16px; margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #000;">${title}</div>
-            <div style="font-size:14px; margin-bottom:15px; line-height:1.6;">
-                ${contentHtml}
+    if (layout === 'split') {
+        // ✅ MODE ORDER & PENGELUARAN (Split Kiri-Kanan, Kunci di Setengah Kertas Atas)
+        let singleReceipt = `
+            <div style="flex: 1; padding: 10px; border: 1px solid #000; border-radius: 8px; margin: 0 5px; display: flex; flex-direction: column; height: 135mm; overflow: hidden;">
+                <div style="text-align:center; font-weight:900; font-size:16px; margin-bottom:4px; letter-spacing:1px;">HOTEL POS</div>
+                <div style="text-align:center; font-weight:bold; font-size:12px; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #000;">${title}</div>
+                
+                <div style="font-size:10px; flex-grow: 1; line-height:1.3; overflow: hidden;">
+                    ${contentHtml}
+                </div>
+                
+                <div style="font-size:11px; margin-top:5px; border-top:1px dashed #000; padding-top:6px;">
+                    ${totalHtml}
+                </div>
+                <div style="text-align:center; font-size:10px; font-weight:bold; border-top:1px solid #000; padding-top:6px; margin-top:6px;">
+                    ${footerText}
+                </div>
             </div>
-            <div style="font-size:15px; margin-bottom:15px; border-top:2px dashed #000; padding-top:15px;">
-                ${totalHtml}
+        `;
+        // Bungkus dalam Flexbox Kiri & Kanan
+        printArea.innerHTML = `<div style="display:flex; justify-content:space-between; width:100%;">${singleReceipt}${singleReceipt}</div>`;
+        
+    } else {
+        // ✅ MODE SHIFT REPORT (1 Halaman Penuh, Tengah, Fleksibel Panjangnya)
+        printArea.innerHTML = `
+            <div style="padding: 15px; border: 1px solid #000; border-radius: 8px; max-width: 90%; margin: 0 auto;">
+                <div style="text-align:center; font-weight:900; font-size:22px; margin-bottom:5px; letter-spacing:1px;">HOTEL POS</div>
+                <div style="text-align:center; font-weight:bold; font-size:16px; margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #000;">${title}</div>
+                
+                <div style="font-size:13px; line-height:1.5;">
+                    ${contentHtml}
+                </div>
+                
+                <div style="font-size:14px; margin-top:15px; border-top:2px dashed #000; padding-top:15px;">
+                    ${totalHtml}
+                </div>
+                <div style="text-align:center; font-size:13px; font-weight:bold; border-top:2px solid #000; padding-top:15px; margin-top:15px;">
+                    ${footerText}
+                </div>
             </div>
-            <div style="text-align:center; font-size:14px; font-weight:bold; border-top:2px solid #000; padding-top:15px;">
-                ${footerText}
-            </div>
-        </div>
-    `;
-
-    // Gabungkan Kiri (Customer) & Kanan (Hotel) - Membatasi tinggi 135mm agar pas
-    printArea.innerHTML = `
-        <div style="display:flex; justify-content:space-between; width:100%; height: 135mm; gap: 15px;">
-            <div style="width:48%; height: 100%;">${singleReceipt}</div>
-            <div style="width:48%; height: 100%;">${singleReceipt}</div>
-        </div>
-    `;
+        `;
+    }
 
     window.print(); 
 };
@@ -85,38 +103,43 @@ window.printOrderStandard = function(orderId) {
     let o = window.globalRecentOrders.find(x => x.orderId === orderId);
     if(!o) return;
     
+    // Font diperkecil & padding dipadatkan agar muat puluhan item
     let content = `
-        <div style="margin-bottom:15px;">
-            <div style="display:flex; justify-content:space-between;"><b>No. Nota:</b> <span>${o.orderId}</span></div>
+        <div style="margin-bottom:8px; font-size:10px;">
+            <div style="display:flex; justify-content:space-between;"><b>Nota:</b> <span>${o.orderId}</span></div>
             <div style="display:flex; justify-content:space-between;"><b>Kamar:</b> <span>${o.roomNumber}</span></div>
             <div style="display:flex; justify-content:space-between;"><b>Kasir:</b> <span>${o.cashier}</span></div>
             <div style="display:flex; justify-content:space-between;"><b>Waktu:</b> <span>${formatWIB(o.timestamp)}</span></div>
         </div>
-        <div style="padding:10px; background:#f9f9f9; border:1px solid #eee; border-radius:5px;">
+        <div style="padding:5px; background:#f9f9f9; border:1px solid #eee; border-radius:3px; font-size:9.5px; line-height:1.2;">
             ${o.readableReceipt.replace(/\n/g, '<br>')}
         </div>
     `;
     
     let total = `
-        <div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>
-        ${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:5px; color:#c0392b;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}
-        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:18px; margin-top:10px; padding-top:10px; border-top:1px solid #ddd;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div>
-        <div style="margin-top:15px; font-size:12px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:5px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>
+        ${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:3px; color:#c0392b;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}
+        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:14px; margin-top:5px; padding-top:5px; border-top:1px solid #ddd;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div>
+        <div style="margin-top:8px; font-size:9.5px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:3px;">
             <div>Cash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}</div>
             <div>Cash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}</div>
             <div>QRIS: Rp ${o.qrisAmount.toLocaleString('id-ID')}</div>
             <div>Transfer: Rp ${o.transferAmount.toLocaleString('id-ID')}</div>
         </div>
     `;
-    window.printStandardGlobal("SALINAN NOTA", content, total, "TERIMA KASIH");
+    
+    // Panggil mode 'split' secara otomatis
+    window.printStandardGlobal("SALINAN NOTA", content, total, "TERIMA KASIH", "split");
 };
 
 window.printExpenseStandard = function(expId) {
     let e = window.globalRecentExpenses.find(x => x.expenseId === expId);
     if(!e) return;
     let content = `<b>ID:</b> ${e.expenseId}<br><b>Kasir:</b> ${e.cashier}<br><b>Waktu:</b> ${formatWIB(e.timestamp)}<br><b>Laci:</b> ${e.drawer}<br><b>Kategori:</b> ${e.category}<br><b>Ket:</b> ${e.description}`;
-    let total = `<div style="font-size:16px; font-weight:bold; text-align:right;">TOTAL KELUAR: Rp ${e.amount.toLocaleString('id-ID')}</div>`;
-    window.printStandardGlobal("BUKTI PENGELUARAN", content, total, "SIMPAN SEBAGAI BUKTI");
+    let total = `<div style="font-size:14px; font-weight:bold; text-align:right;">TOTAL KELUAR: Rp ${e.amount.toLocaleString('id-ID')}</div>`;
+    
+    // Panggil mode 'split' secara otomatis
+    window.printStandardGlobal("BUKTI PENGELUARAN", content, total, "SIMPAN SEBAGAI BUKTI", "split");
 };
 
 window.printShiftStandard = function(shiftId) {
@@ -124,7 +147,9 @@ window.printShiftStandard = function(shiftId) {
     if(!s) return;
     let content = `<b>Shift:</b> ${s.shiftId}<br><b>Kasir:</b> ${s.cashier}<br><b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br><b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br><br><b>Item Terjual:</b><br>${s.foodSummary.replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}`;
     let total = `<b>Omset Laundry:</b> Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}<br><b>Omset Hotel:</b> Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}<br><br><b>Netto Laci Laundry:</b> Rp ${(s.netLaundry||0).toLocaleString('id-ID')}<br><b>Netto Laci Hotel:</b> Rp ${(s.netHotel||0).toLocaleString('id-ID')}`;
-    window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "TERIMA KASIH");
+    
+    // ✅ PANGGIL MODE 'single' AGAR SHIFT REPORT BISA PANJANG (FULL PAGE JIKA PERLU)
+    window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "TERIMA KASIH", "single");
 };
 
 // 1. INIT DB
