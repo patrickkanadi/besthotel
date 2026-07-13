@@ -97,17 +97,30 @@
     </style>
 
     <style>
-        /* CSS Khusus untuk Print Kertas A4 (Kiri Kanan) */
+        /* Sembunyikan area struk di layar tablet normal */
+        @media screen {
+            #print-area { display: none !important; }
+        }
+        
+        /* CSS Khusus untuk Print Kertas A4 Portrait (Hanya Setengah Atas) */
         @media print {
             body * { visibility: hidden; }
             #print-area, #print-area * { visibility: visible; }
             #print-area {
-                position: absolute; left: 0; top: 0; width: 100%;
-                background: #fff; color: #000; font-family: Arial, sans-serif;
+                display: block !important;
+                position: absolute; 
+                left: 0; 
+                top: 0; 
+                width: 100%;
+                height: 148mm; /* Membatasi tinggi persis setengah kertas A4 */
+                background: #fff; 
+                color: #000; 
+                font-family: Arial, sans-serif;
+                overflow: hidden; /* Mencegah tulisan memanjang ke bawah */
             }
             @page {
-                size: A4 landscape; /* Wajib Landscape untuk Kiri-Kanan */
-                margin: 10mm; 
+                size: A4 portrait; /* Menggunakan Kertas Berdiri */
+                margin: 5mm; 
             }
         }
     </style>
