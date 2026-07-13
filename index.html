@@ -97,26 +97,17 @@
     </style>
 
     <style>
-        /* CSS Khusus untuk Print Normal/Wireless */
+        /* CSS Khusus untuk Print Kertas A4 (Kiri Kanan) */
         @media print {
-            body * {
-                visibility: hidden; /* Sembunyikan seluruh UI web */
-            }
-            #print-area, #print-area * {
-                visibility: visible; /* Hanya tampilkan area struk */
-            }
+            body * { visibility: hidden; }
+            #print-area, #print-area * { visibility: visible; }
             #print-area {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 80mm; /* Lebar standar kertas kasir */
-                padding: 10px;
-                font-family: 'Courier New', Courier, monospace;
-                color: #000;
-                background: #fff;
+                position: absolute; left: 0; top: 0; width: 100%;
+                background: #fff; color: #000; font-family: Arial, sans-serif;
             }
             @page {
-                margin: 0; /* Hilangkan margin default browser */
+                size: A4 landscape; /* Wajib Landscape untuk Kiri-Kanan */
+                margin: 10mm; 
             }
         }
     </style>
@@ -143,7 +134,10 @@
             <div class="status-indicator">
                 <span class="dot-online" id="network-dot"></span><span id="network-text" style="margin-right: 10px;">Memuat...</span>
                 <button class="btn-top hidden" id="btn-install" style="background:#2980b9; border-color:#2980b9;" onclick="installPWA()">📲 Install App</button>
-                <button class="btn-top" id="btn-printer" style="background:#bdc3c7; border-color:#bdc3c7;" onclick="connectBluetoothPrinter()">🖨️ Printer: Offline</button>
+                <select id="print-mode-selector" onchange="window.setPrintMode(this.value)" style="padding:8px; border-radius:5px; margin-right:10px; font-weight:bold; border:none; background:#ecf0f1;">
+                    <option value="bluetooth">🖨️ Mode Bluetooth</option>
+                    <option value="desktop">🖨️ Mode A4 (Kertas Split)</option>
+                </select>
                 <button class="btn-top" style="background:#34495e; border-color:#34495e;" onclick="manualPushSync()">🔄 Sinkron</button>
                 <button class="btn-top" style="background:#9b59b6; border-color:#9b59b6;" onclick="openInboundModal()">📦 Stok Masuk</button>
                 <button onclick="window.openEmergencyInbound()" style="background:#e67e22; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">🚨 Inbound Darurat</button>
