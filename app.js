@@ -1626,11 +1626,12 @@ window.confirmInboundItem = function(index, inboundId) {
     
     if(!confirm(`Anda yakin menerima fisik ${actualQty}x ${inbItem.itemName}?`)) return;
 
+    let isDiscrepancy = actualQty !== Number(inbItem.qtySent);
+
     let payload = { 
         inboundId: inboundId, 
-        row: inbItem.row,           // 🎯 Pass Row Index Directly!
         itemName: inbItem.itemName, 
-        date: inbItem.date,         
+        qtySent: inbItem.qtySent,
         qtyReceived: actualQty, 
         cashier: currentCashier, 
         syncStatus: "Pending" 
@@ -1638,12 +1639,11 @@ window.confirmInboundItem = function(index, inboundId) {
     
     db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").add(payload);
     
-    // UI Optimistic Update: HANYA tambah stok jika sesuai. Jika ada selisih, diamkan (menunggu Auth).
-    if (actualQty === inbItem.qtySent) {
-        let mItem = window.globalMenuData.find(m => m.name === inbItem.itemName);
-        if(mItem) mItem.currentStock += actualQty;
+    if (!isDiscrepancy) {
+        let mItem = globalMenuData.find(m => m.name === inbItem.itemName);
+        if(mItem) mItem.currentStock += actualQty; // Otomatis tambah jika jumlahnya cocok
     } else {
-        alert(`⚠️ Terdapat selisih jumlah! (Dikirim: ${inbItem.qtySent}, Diterima: ${actualQty}).\nItem ditandai "Pending Auth" menunggu persetujuan Admin.`);
+        alert(`⚠️ Terdapat selisih jumlah! Sistem mencatat ${inbItem.qtySent} dikirim, tapi Anda menerima ${actualQty}.\n\nStok tidak akan ditambah otomatis. Menunggu persetujuan Admin di Spreadsheet.`);
     }
     
     window.globalPendingInbounds = window.globalPendingInbounds.filter(x => x.inboundId !== inboundId);
