@@ -95,6 +95,31 @@
         .revenue-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #eee; font-size: 14px; }
         .revenue-section-title { font-weight: bold; color: #2c3e50; margin-bottom: 10px; border-bottom: 2px solid #eee; padding-bottom: 5px; }
     </style>
+
+    <style>
+        /* CSS Khusus untuk Print Normal/Wireless */
+        @media print {
+            body * {
+                visibility: hidden; /* Sembunyikan seluruh UI web */
+            }
+            #print-area, #print-area * {
+                visibility: visible; /* Hanya tampilkan area struk */
+            }
+            #print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 80mm; /* Lebar standar kertas kasir */
+                padding: 10px;
+                font-family: 'Courier New', Courier, monospace;
+                color: #000;
+                background: #fff;
+            }
+            @page {
+                margin: 0; /* Hilangkan margin default browser */
+            }
+        }
+    </style>
 </head>
 <body>
 
@@ -603,6 +628,8 @@
     <div id="toast-notification" style="position: fixed; bottom: 20px; right: 20px; background: #27ae60; color: white; padding: 15px 25px; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); transition: opacity 0.3s; opacity: 0; pointer-events: none; z-index: 9999;">
         ✅ Order berhasil disimpan!
     </div>
+
+    <div id="print-area"></div>
 
     <script src="app.js"></script>
 </body>
