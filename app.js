@@ -1360,6 +1360,7 @@ window.submitEmergencyInbound = async function() {
     let payload = {
         action: "emergencyInbound",
         data: {
+            inboundId: "INB-EMG-" + Date.now(), // ✅ ID UNIK DITAMBAHKAN DI SINI
             timestamp: new Date().toISOString(),
             itemName: itemName,
             qty: qty,
