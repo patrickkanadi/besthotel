@@ -53,15 +53,15 @@ window.printStandardGlobal = function(title, contentHtml, totalHtml, footerText)
     let printArea = document.getElementById("print-area");
     if (!printArea) return alert("Error: Area print tidak ditemukan di HTML.");
 
-    // Template untuk satu sisi (Setengah A4)
+    // Template untuk satu sisi (Muat di dalam Setengah A4)
     let singleReceipt = `
-        <div style="padding:20px; border:1px solid #000; height: 100%; box-sizing: border-box; border-radius:8px;">
+        <div style="padding:15px; border:1px solid #000; height: 100%; box-sizing: border-box; border-radius:8px;">
             <div style="text-align:center; font-weight:900; font-size:22px; margin-bottom:5px; letter-spacing:1px;">HOTEL POS</div>
-            <div style="text-align:center; font-weight:bold; font-size:16px; margin-bottom:20px; padding-bottom:10px; border-bottom:2px solid #000;">${title}</div>
-            <div style="font-size:14px; margin-bottom:20px; line-height:1.6;">
+            <div style="text-align:center; font-weight:bold; font-size:16px; margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #000;">${title}</div>
+            <div style="font-size:14px; margin-bottom:15px; line-height:1.6;">
                 ${contentHtml}
             </div>
-            <div style="font-size:15px; margin-bottom:20px; border-top:2px dashed #000; padding-top:15px;">
+            <div style="font-size:15px; margin-bottom:15px; border-top:2px dashed #000; padding-top:15px;">
                 ${totalHtml}
             </div>
             <div style="text-align:center; font-size:14px; font-weight:bold; border-top:2px solid #000; padding-top:15px;">
@@ -70,11 +70,11 @@ window.printStandardGlobal = function(title, contentHtml, totalHtml, footerText)
         </div>
     `;
 
-    // Gabungkan menjadi Kiri dan Kanan
+    // Gabungkan Kiri (Customer) & Kanan (Hotel) - Membatasi tinggi 135mm agar pas
     printArea.innerHTML = `
-        <div style="display:flex; justify-content:space-between; width:100%;">
-            <div style="width:48%;">${singleReceipt}</div>
-            <div style="width:48%;">${singleReceipt}</div>
+        <div style="display:flex; justify-content:space-between; width:100%; height: 135mm; gap: 15px;">
+            <div style="width:48%; height: 100%;">${singleReceipt}</div>
+            <div style="width:48%; height: 100%;">${singleReceipt}</div>
         </div>
     `;
 
@@ -102,7 +102,7 @@ window.printOrderStandard = function(orderId) {
         ${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:5px; color:#c0392b;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}
         <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:18px; margin-top:10px; padding-top:10px; border-top:1px solid #ddd;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div>
         <div style="margin-top:15px; font-size:12px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:5px;">
-            <div>Cash Lndry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}</div>
+            <div>Cash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}</div>
             <div>Cash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}</div>
             <div>QRIS: Rp ${o.qrisAmount.toLocaleString('id-ID')}</div>
             <div>Transfer: Rp ${o.transferAmount.toLocaleString('id-ID')}</div>
@@ -123,7 +123,7 @@ window.printShiftStandard = function(shiftId) {
     let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
     if(!s) return;
     let content = `<b>Shift:</b> ${s.shiftId}<br><b>Kasir:</b> ${s.cashier}<br><b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br><b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br><br><b>Item Terjual:</b><br>${s.foodSummary.replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}`;
-    let total = `<b>Omset Laundry:</b> Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}<br><b>Omset Hotel:</b> Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}<br><br><b>Netto Laci Lndry:</b> Rp ${(s.netLaundry||0).toLocaleString('id-ID')}<br><b>Netto Laci Hotel:</b> Rp ${(s.netHotel||0).toLocaleString('id-ID')}`;
+    let total = `<b>Omset Laundry:</b> Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}<br><b>Omset Hotel:</b> Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}<br><br><b>Netto Laci Laundry:</b> Rp ${(s.netLaundry||0).toLocaleString('id-ID')}<br><b>Netto Laci Hotel:</b> Rp ${(s.netHotel||0).toLocaleString('id-ID')}`;
     window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "TERIMA KASIH");
 };
 
@@ -386,7 +386,7 @@ window.printOrderGlobal = function(orderId) {
     let total = `Subtotal: Rp ${o.subtotal.toLocaleString('id-ID')}\n`;
     if(o.discounts > 0) total += `Diskon: -Rp ${o.discounts.toLocaleString('id-ID')}\n`;
     total += `TOTAL: Rp ${o.grandTotal.toLocaleString('id-ID')}\n`;
-    total += `\n[Pembayaran]\nCash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}\nCash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}\nQRIS Lndry: Rp ${o.qrisAmount.toLocaleString('id-ID')}\nTrf Hotel : Rp ${o.transferAmount.toLocaleString('id-ID')}`;
+    total += `\n[Pembayaran]\nCash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}\nCash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}\nQRIS Laundry: Rp ${o.qrisAmount.toLocaleString('id-ID')}\nTrf Hotel : Rp ${o.transferAmount.toLocaleString('id-ID')}`;
     window.printGlobalReceipt("SALINAN NOTA", content, total, "TERIMA KASIH");
 };
 
@@ -1279,7 +1279,7 @@ window.renderHistoryList = function(type) {
                 <div style="display:flex; text-align:right; align-items:center;">
                     <div style="margin-right:15px; text-align:right; font-size:13px; border-right:2px solid #eee; padding-right:15px;">
                         <div style="color:#e67e22; margin-bottom:4px;"><strong>Hotel:</strong> Rp ${(s.omsetHotel || 0).toLocaleString('id-ID')}</div>
-                        <div style="color:#2980b9;"><strong>Lndry:</strong> Rp ${(s.omsetLaundry || 0).toLocaleString('id-ID')}</div>
+                        <div style="color:#2980b9;"><strong>Laundry:</strong> Rp ${(s.omsetLaundry || 0).toLocaleString('id-ID')}</div>
                     </div>
                     ${btnBatal}
                     <button onclick="viewShiftDetailsGlobal('${s.shiftId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff; margin-right:5px;">👁️ Detail</button>
