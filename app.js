@@ -35,6 +35,98 @@ window.settlementMode = 'complete';
 let btDevice = null; let btCharacteristic = null;
 window.lastActivityWrite = Date.now();
 
+window.currentPrintMode = 'bluetooth';
+
+window.setPrintMode = function(mode) {
+    window.currentPrintMode = mode;
+    let btBtn = document.getElementById("btn-printer");
+    // Sembunyikan tombol "Connect Bluetooth" jika mode A4 dipilih
+    if (btBtn) {
+        btBtn.style.display = (mode === 'desktop') ? 'none' : 'inline-block';
+    }
+};
+
+// ==========================================
+// ENGINE A4 SPLIT PRINT (KIRI & KANAN)
+// ==========================================
+window.printStandardGlobal = function(title, contentHtml, totalHtml, footerText) {
+    let printArea = document.getElementById("print-area");
+    if (!printArea) return alert("Error: Area print tidak ditemukan di HTML.");
+
+    // Template untuk satu sisi (Setengah A4)
+    let singleReceipt = `
+        <div style="padding:20px; border:1px solid #000; height: 100%; box-sizing: border-box; border-radius:8px;">
+            <div style="text-align:center; font-weight:900; font-size:22px; margin-bottom:5px; letter-spacing:1px;">HOTEL POS</div>
+            <div style="text-align:center; font-weight:bold; font-size:16px; margin-bottom:20px; padding-bottom:10px; border-bottom:2px solid #000;">${title}</div>
+            <div style="font-size:14px; margin-bottom:20px; line-height:1.6;">
+                ${contentHtml}
+            </div>
+            <div style="font-size:15px; margin-bottom:20px; border-top:2px dashed #000; padding-top:15px;">
+                ${totalHtml}
+            </div>
+            <div style="text-align:center; font-size:14px; font-weight:bold; border-top:2px solid #000; padding-top:15px;">
+                ${footerText}
+            </div>
+        </div>
+    `;
+
+    // Gabungkan menjadi Kiri dan Kanan
+    printArea.innerHTML = `
+        <div style="display:flex; justify-content:space-between; width:100%;">
+            <div style="width:48%;">${singleReceipt}</div>
+            <div style="width:48%;">${singleReceipt}</div>
+        </div>
+    `;
+
+    window.print(); 
+};
+
+window.printOrderStandard = function(orderId) {
+    let o = window.globalRecentOrders.find(x => x.orderId === orderId);
+    if(!o) return;
+    
+    let content = `
+        <div style="margin-bottom:15px;">
+            <div style="display:flex; justify-content:space-between;"><b>No. Nota:</b> <span>${o.orderId}</span></div>
+            <div style="display:flex; justify-content:space-between;"><b>Kamar:</b> <span>${o.roomNumber}</span></div>
+            <div style="display:flex; justify-content:space-between;"><b>Kasir:</b> <span>${o.cashier}</span></div>
+            <div style="display:flex; justify-content:space-between;"><b>Waktu:</b> <span>${formatWIB(o.timestamp)}</span></div>
+        </div>
+        <div style="padding:10px; background:#f9f9f9; border:1px solid #eee; border-radius:5px;">
+            ${o.readableReceipt.replace(/\n/g, '<br>')}
+        </div>
+    `;
+    
+    let total = `
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>
+        ${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:5px; color:#c0392b;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}
+        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:18px; margin-top:10px; padding-top:10px; border-top:1px solid #ddd;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div>
+        <div style="margin-top:15px; font-size:12px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:5px;">
+            <div>Cash Lndry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}</div>
+            <div>Cash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}</div>
+            <div>QRIS: Rp ${o.qrisAmount.toLocaleString('id-ID')}</div>
+            <div>Transfer: Rp ${o.transferAmount.toLocaleString('id-ID')}</div>
+        </div>
+    `;
+    window.printStandardGlobal("SALINAN NOTA", content, total, "TERIMA KASIH");
+};
+
+window.printExpenseStandard = function(expId) {
+    let e = window.globalRecentExpenses.find(x => x.expenseId === expId);
+    if(!e) return;
+    let content = `<b>ID:</b> ${e.expenseId}<br><b>Kasir:</b> ${e.cashier}<br><b>Waktu:</b> ${formatWIB(e.timestamp)}<br><b>Laci:</b> ${e.drawer}<br><b>Kategori:</b> ${e.category}<br><b>Ket:</b> ${e.description}`;
+    let total = `<div style="font-size:16px; font-weight:bold; text-align:right;">TOTAL KELUAR: Rp ${e.amount.toLocaleString('id-ID')}</div>`;
+    window.printStandardGlobal("BUKTI PENGELUARAN", content, total, "SIMPAN SEBAGAI BUKTI");
+};
+
+window.printShiftStandard = function(shiftId) {
+    let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
+    if(!s) return;
+    let content = `<b>Shift:</b> ${s.shiftId}<br><b>Kasir:</b> ${s.cashier}<br><b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br><b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br><br><b>Item Terjual:</b><br>${s.foodSummary.replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}`;
+    let total = `<b>Omset Laundry:</b> Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}<br><b>Omset Hotel:</b> Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}<br><br><b>Netto Laci Lndry:</b> Rp ${(s.netLaundry||0).toLocaleString('id-ID')}<br><b>Netto Laci Hotel:</b> Rp ${(s.netHotel||0).toLocaleString('id-ID')}`;
+    window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "TERIMA KASIH");
+};
+
 // 1. INIT DB
 function initDB() {
     return new Promise((resolve, reject) => {
@@ -192,106 +284,6 @@ window.printGlobalReceipt = async function(title, contentStr, totalStr, footerSt
     } catch(e) { alert("Gagal mencetak: " + e); }
 };
 
-// ==========================================
-// ENGINE NORMAL PRINT (WIFI / DESKTOP)
-// ==========================================
-
-// 1. Template Dasar Kertas Print
-window.printStandardGlobal = function(title, contentHtml, totalHtml, footerText) {
-    let printArea = document.getElementById("print-area");
-    if (!printArea) return alert("Error: Area print tidak ditemukan di HTML.");
-
-    printArea.innerHTML = `
-        <div style="text-align:center; font-weight:bold; font-size:18px; margin-bottom:5px;">HOTEL POS</div>
-        <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; padding-bottom:5px; border-bottom:1px solid #000;">${title}</div>
-        <div style="font-size:12px; margin-bottom:10px; line-height:1.4;">
-            ${contentHtml}
-        </div>
-        <div style="font-size:12px; margin-bottom:10px; border-top:1px dashed #000; padding-top:10px;">
-            ${totalHtml}
-        </div>
-        <div style="text-align:center; font-size:12px; font-weight:bold; border-top:1px solid #000; padding-top:10px;">
-            ${footerText}
-        </div>
-    `;
-
-    // Memicu dialog print bawaan browser/OS (Wi-Fi Printer)
-    window.print(); 
-};
-
-// 2. Format untuk Struk Order
-window.printOrderStandard = function(orderId) {
-    let o = window.globalRecentOrders.find(x => x.orderId === orderId);
-    if(!o) return;
-    
-    let content = `
-        <div style="margin-bottom:10px;">
-            <b>Nota:</b> ${o.orderId}<br>
-            <b>Kamar:</b> ${o.roomNumber}<br>
-            <b>Kasir:</b> ${o.cashier}<br>
-            <b>Waktu:</b> ${formatWIB(o.timestamp)}
-        </div>
-        <div>${o.readableReceipt.replace(/\n/g, '<br>')}</div>
-    `;
-    
-    let total = `
-        <div style="display:flex; justify-content:space-between;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>
-        ${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}
-        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:14px; margin-top:5px;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div>
-        <div style="margin-top:10px; font-size:11px; color:#333;">
-            <div>Cash Lndry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')} | Cash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}</div>
-            <div>QRIS: Rp ${o.qrisAmount.toLocaleString('id-ID')} | Transfer: Rp ${o.transferAmount.toLocaleString('id-ID')}</div>
-        </div>
-    `;
-    
-    window.printStandardGlobal("SALINAN NOTA", content, total, "TERIMA KASIH");
-};
-
-// 3. Format untuk Bukti Pengeluaran
-window.printExpenseStandard = function(expId) {
-    let e = window.globalRecentExpenses.find(x => x.expenseId === expId);
-    if(!e) return;
-    
-    let content = `
-        <b>ID:</b> ${e.expenseId}<br>
-        <b>Kasir:</b> ${e.cashier}<br>
-        <b>Waktu:</b> ${formatWIB(e.timestamp)}<br>
-        <b>Laci:</b> ${e.drawer}<br>
-        <b>Kategori:</b> ${e.category}<br>
-        <b>Ket:</b> ${e.description}
-    `;
-    
-    let total = `<div style="font-size:14px; font-weight:bold;">TOTAL KELUAR: Rp ${e.amount.toLocaleString('id-ID')}</div>`;
-    
-    window.printStandardGlobal("BUKTI PENGELUARAN", content, total, "SIMPAN SEBAGAI BUKTI");
-};
-
-// 4. Format untuk Laporan Shift
-window.printShiftStandard = function(shiftId) {
-    let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
-    if(!s) return;
-    
-    let content = `
-        <b>Shift:</b> ${s.shiftId}<br>
-        <b>Kasir:</b> ${s.cashier}<br>
-        <b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br>
-        <b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br>
-        <br><b>Item Terjual:</b><br>
-        ${s.foodSummary.replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}
-    `;
-    
-    let total = `
-        <b>Total Pesanan:</b> ${s.totalOrders}<br><br>
-        <b>Omset Laundry:</b> Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}<br>
-        <b>Omset Hotel:</b> Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}<br>
-        <b>Diskon (Free):</b> -Rp ${(s.totalFree||0).toLocaleString('id-ID')}<br><br>
-        <b>Netto Laci Lndry:</b> Rp ${(s.netLaundry||0).toLocaleString('id-ID')}<br>
-        <b>Netto Laci Hotel:</b> Rp ${(s.netHotel||0).toLocaleString('id-ID')}
-    `;
-    
-    window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "TERIMA KASIH");
-};
-
 window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, payMethod) {
     const h1 = "HOTEL POS"; 
     const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00";
@@ -381,16 +373,20 @@ window.showToast = function(message, isError = false) {
 };
 
 window.printOrderGlobal = function(orderId) {
+    if (window.currentPrintMode === 'desktop') {
+        window.printOrderStandard(orderId);
+        return;
+    }
+    
+    // -- Logika Bluetooth Bawaan --
     let o = window.globalRecentOrders.find(x => x.orderId === orderId);
     if(!o) return;
     let content = `Nota: ${o.orderId}\nKamar: ${o.roomNumber}\nKasir: ${o.cashier}\nWaktu: ${formatWIB(o.timestamp)}\n--------------------------------\n`;
     content += o.readableReceipt;
-    
     let total = `Subtotal: Rp ${o.subtotal.toLocaleString('id-ID')}\n`;
     if(o.discounts > 0) total += `Diskon: -Rp ${o.discounts.toLocaleString('id-ID')}\n`;
     total += `TOTAL: Rp ${o.grandTotal.toLocaleString('id-ID')}\n`;
     total += `\n[Pembayaran]\nCash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}\nCash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}\nQRIS Lndry: Rp ${o.qrisAmount.toLocaleString('id-ID')}\nTrf Hotel : Rp ${o.transferAmount.toLocaleString('id-ID')}`;
-    
     window.printGlobalReceipt("SALINAN NOTA", content, total, "TERIMA KASIH");
 };
 
@@ -410,6 +406,11 @@ window.viewExpenseDetailsGlobal = function(expId) {
 };
 
 window.printExpenseGlobal = function(expId) {
+    if (window.currentPrintMode === 'desktop') {
+        window.printExpenseStandard(expId);
+        return;
+    }
+
     let e = window.globalRecentExpenses.find(x => x.expenseId === expId);
     if(!e) return;
     let content = `ID: ${e.expenseId}\nKasir: ${e.cashier}\nWaktu: ${formatWIB(e.timestamp)}\nLaci: ${e.drawer}\nKategori: ${e.category}\nKet: ${e.description}`;
@@ -473,6 +474,11 @@ window.viewShiftDetailsGlobal = function(shiftId) {
 };
 
 window.printShiftGlobal = async function(shiftId) {
+    if (window.currentPrintMode === 'desktop') {
+        window.printShiftStandard(shiftId);
+        return;
+    }
+
     let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
     if(!s) return;
     if (!btCharacteristic) return alert("⚠️ Printer belum terhubung!");
@@ -946,11 +952,6 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
         }
     }
 
-    if (shouldPrint && !btCharacteristic) {
-        alert("⚠️ Printer belum terhubung! Nota batal dicetak, namun transaksi tetap akan diselesaikan dan direkam ke sistem.");
-        shouldPrint = false;
-    }
-
     let roomNumber = antreans[currentAntreanIndex].room || "Tamu Umum";
     let hasTicketItem = currentCart.some(i => i.workflow === "TICKET");
     let finalStatus = hasTicketItem ? "Processing" : "Completed";
@@ -973,8 +974,16 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
         window.globalUnpaidOrders.unshift(orderPayload); 
     }
 
-    if (shouldPrint && typeof window.buildEscPosReceipt === "function") {
-        await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, totalPaid, window.cartGrandTotal - totalPaid, "Split");
+    // Di dalam finalizeOrder... cari blok if (shouldPrint ... )
+    if (shouldPrint) {
+        if (window.currentPrintMode === 'desktop') {
+            window.globalRecentOrders.unshift(orderPayload); // Pastikan terbaca oleh router
+            window.printOrderStandard(orderPayload.orderId);
+        } else if (typeof window.buildEscPosReceipt === "function" && btCharacteristic) {
+            await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, totalPaid, window.cartGrandTotal - totalPaid, "Split");
+        } else {
+            alert("⚠️ Printer Bluetooth belum terhubung!");
+        }
     }
     
     let mod = document.getElementById("review-modal"); if(mod) mod.classList.add("hidden");
@@ -1228,8 +1237,7 @@ window.renderHistoryList = function(type) {
                 <div style="display:flex; align-items:center; gap:8px;">${badge}
                     ${btnBatal}
                     <button onclick="viewOrderDetailsGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">👁️ Detail</button>
-                    <button onclick="printOrderGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #3498db; color:#3498db; background:#fff;" title="Cetak via Bluetooth">🖨️ BT</button>
-                    <button onclick="printOrderStandard('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #2ecc71; color:#2ecc71; background:#fff;" title="Cetak via WiFi/Desktop">🖨️ WiFi</button>
+                    <button onclick="printOrderGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
                 </div></div>`;
         });
         
