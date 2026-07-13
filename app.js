@@ -1585,15 +1585,16 @@ window.runBackgroundSync = async function() {
 };
 
 // ==========================================
-// STOCK INBOUND CONFIRMATION
+// STOCK INBOUND (BATCH CONFIRMATION)
 // ==========================================
 window.openInboundModal = function() {
     const container = document.getElementById("inbound-list-container");
     container.innerHTML = "";
-    if (window.globalPendingInbounds.length === 0) {
+    if (!window.globalPendingInbounds || window.globalPendingInbounds.length === 0) {
         container.innerHTML = `<div style="padding:20px; text-align:center; color:#7f8c8d;">Tidak ada pengiriman stok yang tertunda.</div>`;
     } else {
         window.globalPendingInbounds.forEach((inb, index) => {
+            // Hilangkan tombol Terima individual
             container.innerHTML += `
             <div class="history-row" style="margin-bottom:10px; border-radius:6px; border:1px solid #eee; padding:15px;">
                 <div style="flex:1;">
@@ -1605,10 +1606,17 @@ window.openInboundModal = function() {
                     <button onclick="adjInbQty(${index}, -1)" style="padding:8px 12px; background:#e74c3c; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">-</button>
                     <input type="number" id="inb-qty-${index}" value="${inb.qtySent}" style="width:60px; text-align:center; padding:8px; border:1px solid #ccc; border-radius:4px; font-weight:bold;">
                     <button onclick="adjInbQty(${index}, 1)" style="padding:8px 12px; background:#2ecc71; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">+</button>
-                    <button onclick="confirmInboundItem(${index}, '${inb.inboundId}')" style="padding:10px 15px; background:#34495e; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold; margin-left:10px;">Terima</button>
                 </div>
             </div>`;
         });
+        
+        // Tambahkan Tombol Batch "Konfirmasi Semua" di bagian bawah list
+        container.innerHTML += `
+        <div style="text-align: right; margin-top: 15px;">
+            <button onclick="window.submitBatchInbound()" style="padding:12px 20px; background:#e67e22; color:white; border:none; border-radius:8px; font-weight:bold; font-size:15px; cursor:pointer;">
+                ✅ Konfirmasi Semua Item
+            </button>
+        </div>`;
     }
     document.getElementById("inbound-modal").classList.remove("hidden");
 };
@@ -1619,37 +1627,56 @@ window.adjInbQty = function(index, delta) {
     input.value = Math.max(0, current + delta);
 };
 
-window.confirmInboundItem = function(index, inboundId) {
-    let actualQty = Number(document.getElementById(`inb-qty-${index}`).value) || 0;
-    let inbItem = window.globalPendingInbounds.find(x => x.inboundId === inboundId);
-    if (!inbItem) return;
-    
-    if(!confirm(`Anda yakin menerima fisik ${actualQty}x ${inbItem.itemName}?`)) return;
+window.submitBatchInbound = function() {
+    if (!window.globalPendingInbounds || window.globalPendingInbounds.length === 0) return;
 
-    let isDiscrepancy = actualQty !== Number(inbItem.qtySent);
+    let hasDiscrepancy = false;
+    let batchData = [];
 
-    let payload = { 
-        inboundId: inboundId, 
-        itemName: inbItem.itemName, 
-        qtySent: inbItem.qtySent,
-        qtyReceived: actualQty, 
-        cashier: currentCashier, 
-        syncStatus: "Pending" 
-    };
-    
-    db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").add(payload);
-    
-    if (!isDiscrepancy) {
-        let mItem = globalMenuData.find(m => m.name === inbItem.itemName);
-        if(mItem) mItem.currentStock += actualQty; // Otomatis tambah jika jumlahnya cocok
+    // 1. Kumpulkan data dan deteksi selisih
+    window.globalPendingInbounds.forEach((inb, index) => {
+        let actualQty = Number(document.getElementById(`inb-qty-${index}`).value) || 0;
+        if (actualQty !== Number(inb.qtySent)) hasDiscrepancy = true;
+
+        batchData.push({
+            inboundId: inb.inboundId,
+            itemName: inb.itemName,
+            qtySent: inb.qtySent,
+            qtyReceived: actualQty,
+            cashier: currentCashier,
+            syncStatus: "Pending"
+        });
+    });
+
+    // 2. Minta konfirmasi dari kasir
+    if (hasDiscrepancy) {
+        if(!confirm("⚠️ Terdapat SELISIH jumlah antara barang yang dikirim Admin dan yang Anda terima.\n\nItem yang berselisih akan ditandai dan membutuhkan Otorisasi Admin di Spreadsheet. Tetap konfirmasi semua?")) {
+            return; // Batal submit jika kasir menolak
+        }
     } else {
-        alert(`⚠️ Terdapat selisih jumlah! Sistem mencatat ${inbItem.qtySent} dikirim, tapi Anda menerima ${actualQty}.\n\nStok tidak akan ditambah otomatis. Menunggu persetujuan Admin di Spreadsheet.`);
+        if(!confirm("Konfirmasi penerimaan semua barang ini?")) return;
     }
-    
-    window.globalPendingInbounds = window.globalPendingInbounds.filter(x => x.inboundId !== inboundId);
-    window.openInboundModal(); 
-    window.renderProductGrid(); 
+
+    // 3. Simpan ke Antrean Lokal & Update Memori UI
+    batchData.forEach(payload => {
+        db.transaction(["stock_inbounds"], "readwrite").objectStore("stock_inbounds").add(payload);
+
+        // Jika tidak ada selisih, stok langsung ditambah di UI kasir (optimistic update)
+        if (payload.qtyReceived === Number(payload.qtySent)) {
+            let mItem = globalMenuData.find(m => m.name === payload.itemName);
+            if(mItem) mItem.currentStock += payload.qtyReceived;
+        }
+    });
+
+    // 4. BERSUHKAN MEMORI secara instan agar list benar-benar kosong!
+    window.globalPendingInbounds = [];
+    document.getElementById("inbound-modal").classList.add("hidden");
+
+    // 5. Update UI & Kirim Sinkronisasi
+    window.renderProductGrid();
     window.runBackgroundSync();
+
+    if (typeof window.showToast === 'function') window.showToast("✅ Konfirmasi Berhasil Tersimpan!");
 };
 
 // ==========================================
