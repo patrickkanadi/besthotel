@@ -54,49 +54,32 @@ window.printStandardGlobal = function(title, contentHtml, totalHtml, footerText,
     if (!printArea) return alert("Error: Area print tidak ditemukan di HTML.");
 
     if (layout === 'split') {
-        // ✅ MODE ORDER & PENGELUARAN (Split Kiri-Kanan, Kunci di Setengah Kertas Atas)
         let singleReceipt = `
             <div style="flex: 1; padding: 10px; border: 1px solid #000; border-radius: 8px; margin: 0 5px; display: flex; flex-direction: column; height: 135mm; overflow: hidden;">
                 <div style="text-align:center; font-weight:900; font-size:16px; margin-bottom:4px; letter-spacing:1px;">HOTEL POS</div>
                 <div style="text-align:center; font-weight:bold; font-size:12px; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #000;">${title}</div>
-                
-                <div style="font-size:10px; flex-grow: 1; line-height:1.3; overflow: hidden;">
-                    ${contentHtml}
-                </div>
-                
-                <div style="font-size:11px; margin-top:5px; border-top:1px dashed #000; padding-top:6px;">
-                    ${totalHtml}
-                </div>
-                <div style="text-align:center; font-size:10px; font-weight:bold; border-top:1px solid #000; padding-top:6px; margin-top:6px;">
-                    ${footerText}
-                </div>
+                <div style="font-size:10px; flex-grow: 1; line-height:1.3; overflow: hidden;">${contentHtml}</div>
+                <div style="font-size:11px; margin-top:5px; border-top:1px dashed #000; padding-top:6px;">${totalHtml}</div>
+                <div style="text-align:center; font-size:10px; font-weight:bold; border-top:1px solid #000; padding-top:6px; margin-top:6px;">${footerText}</div>
             </div>
         `;
-        // Bungkus dalam Flexbox Kiri & Kanan
         printArea.innerHTML = `<div style="display:flex; justify-content:space-between; width:100%;">${singleReceipt}${singleReceipt}</div>`;
-        
     } else {
-        // ✅ MODE SHIFT REPORT (1 Halaman Penuh, Tengah, Fleksibel Panjangnya)
         printArea.innerHTML = `
             <div style="padding: 15px; border: 1px solid #000; border-radius: 8px; max-width: 90%; margin: 0 auto;">
                 <div style="text-align:center; font-weight:900; font-size:22px; margin-bottom:5px; letter-spacing:1px;">HOTEL POS</div>
                 <div style="text-align:center; font-weight:bold; font-size:16px; margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #000;">${title}</div>
-                
-                <div style="font-size:13px; line-height:1.5;">
-                    ${contentHtml}
-                </div>
-                
-                <div style="font-size:14px; margin-top:15px; border-top:2px dashed #000; padding-top:15px;">
-                    ${totalHtml}
-                </div>
-                <div style="text-align:center; font-size:13px; font-weight:bold; border-top:2px solid #000; padding-top:15px; margin-top:15px;">
-                    ${footerText}
-                </div>
+                <div style="font-size:13px; line-height:1.5;">${contentHtml}</div>
+                <div style="font-size:14px; margin-top:15px; border-top:2px dashed #000; padding-top:15px;">${totalHtml}</div>
+                <div style="text-align:center; font-size:13px; font-weight:bold; border-top:2px solid #000; padding-top:15px; margin-top:15px;">${footerText}</div>
             </div>
         `;
     }
 
-    window.print(); 
+    // ✅ FIX BLANK PAGE: Beri waktu browser 250ms untuk menggambar struk sebelum print!
+    setTimeout(() => {
+        window.print(); 
+    }, 250);
 };
 
 window.printOrderStandard = function(orderId) {
@@ -143,12 +126,16 @@ window.printExpenseStandard = function(expId) {
 };
 
 window.printShiftStandard = function(shiftId) {
+    // ✅ FIX: Cari di History ATAU di Shift yang sedang berjalan saat ini
     let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
-    if(!s) return;
-    let content = `<b>Shift:</b> ${s.shiftId}<br><b>Kasir:</b> ${s.cashier}<br><b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br><b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br><br><b>Item Terjual:</b><br>${s.foodSummary.replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}`;
+    if (!s && window.currentShiftData && window.currentShiftData.shiftId === shiftId) {
+        s = window.currentShiftData;
+    }
+    if (!s) return alert("Data shift tidak ditemukan untuk dicetak.");
+
+    let content = `<b>Shift:</b> ${s.shiftId}<br><b>Kasir:</b> ${s.cashier}<br><b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br><b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br><br><b>Item Terjual:</b><br>${(s.foodSummary || "Belum ada item terjual").replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}`;
     let total = `<b>Omset Laundry:</b> Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}<br><b>Omset Hotel:</b> Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}<br><br><b>Netto Laci Laundry:</b> Rp ${(s.netLaundry||0).toLocaleString('id-ID')}<br><b>Netto Laci Hotel:</b> Rp ${(s.netHotel||0).toLocaleString('id-ID')}`;
     
-    // ✅ PANGGIL MODE 'single' AGAR SHIFT REPORT BISA PANJANG (FULL PAGE JIKA PERLU)
     window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "TERIMA KASIH", "single");
 };
 
@@ -2074,13 +2061,20 @@ window.openShiftReport = async function() {
 window.printCurrentShiftReport = async function() {
     const data = window.currentShiftData;
     if (!data) return alert("Data ringkasan shift tidak tersedia untuk dicetak.");
+
+    // ✅ FIX: Patuhi Dropdown Global!
+    if (window.currentPrintMode === 'desktop') {
+        window.printShiftStandard(data.shiftId);
+        return;
+    }
+
     if (!btCharacteristic) {
         alert("⚠️ Printer belum terhubung. Silakan nyalakan bluetooth dan klik tombol 'Printer: Offline' di menu atas.");
         return;
     }
     try {
         await window.buildShiftReportReceipt(data);
-        alert("Laporan penutupan shift berhasil dikirim ke printer!");
+        alert("Laporan penutupan shift berhasil dikirim ke printer Bluetooth!");
     } catch (e) { alert("Gagal mencetak laporan: " + e.toString()); }
 };
 
@@ -2090,11 +2084,16 @@ window.triggerEndShift = async function(isAutoClose = false) {
     if (!isAutoClose) {
         if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
         
-        if (!btCharacteristic) {
-            alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
+        // ✅ FIX: Patuhi Dropdown Global saat End Shift!
+        if (window.currentPrintMode === 'desktop') {
+            window.printShiftStandard(data.shiftId);
         } else {
-            try { await window.buildShiftReportReceipt(data); } 
-            catch (e) { alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem."); }
+            if (!btCharacteristic) {
+                alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
+            } else {
+                try { await window.buildShiftReportReceipt(data); } 
+                catch (e) { alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem."); }
+            }
         }
     }
     
