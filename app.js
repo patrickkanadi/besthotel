@@ -944,6 +944,7 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
     let totalPaid = cashL + cashH + qris + transfer; 
     let payLaterEnabled = window.globalSettings && String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
 
+    // 1. Cek Kasbon / Belum Lunas
     if (Math.round(window.cartGrandTotal) > Math.round(totalPaid)) {
         if (!payLaterEnabled) {
             return alert("⚠️ Pembayaran Belum Cukup! (Fitur Kasbon dinonaktifkan di Settings)");
@@ -952,6 +953,7 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
         }
     }
 
+    // 2. Siapkan Data Order
     let roomNumber = antreans[currentAntreanIndex].room || "Tamu Umum";
     let hasTicketItem = currentCart.some(i => i.workflow === "TICKET");
     let finalStatus = hasTicketItem ? "Processing" : "Completed";
@@ -963,6 +965,7 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
         paymentMethod: "Split", cashLaundryAmount: cashL, cashHotelAmount: cashH, qrisAmount: qris, transferAmount: transfer, freeAmount: free, syncStatus: "Pending" 
     };
 
+    // 3. Simpan ke Database Lokal & Memori
     db.transaction(["orders"], "readwrite").objectStore("orders").add(orderPayload);
     window.globalRecentOrders.unshift(orderPayload);
     
@@ -974,27 +977,31 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
         window.globalUnpaidOrders.unshift(orderPayload); 
     }
 
-    // Di dalam finalizeOrder... cari blok if (shouldPrint ... )
+    // 4. PRINTING ROUTER (GLOBAL TOGGLE)
     if (shouldPrint) {
         if (window.currentPrintMode === 'desktop') {
-            window.globalRecentOrders.unshift(orderPayload); // Pastikan terbaca oleh router
+            // Mode Print A4/Desktop (WiFi)
             window.printOrderStandard(orderPayload.orderId);
-        } else if (typeof window.buildEscPosReceipt === "function" && btCharacteristic) {
-            await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, totalPaid, window.cartGrandTotal - totalPaid, "Split");
         } else {
-            alert("⚠️ Printer Bluetooth belum terhubung!");
+            // Mode Print Bluetooth (Thermal)
+            if (typeof window.buildEscPosReceipt === "function" && typeof btCharacteristic !== 'undefined' && btCharacteristic) {
+                await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, totalPaid, window.cartGrandTotal - totalPaid, "Split");
+            } else {
+                alert("⚠️ Printer Bluetooth belum terhubung! Transaksi tetap tersimpan di sistem.");
+            }
         }
     }
     
-    let mod = document.getElementById("review-modal"); if(mod) mod.classList.add("hidden");
+    // 5. Bersihkan UI & Sync
+    let mod = document.getElementById("review-modal"); 
+    if(mod) mod.classList.add("hidden");
     
-    window.showToast("✅ Order berhasil disimpan!");
+    if (typeof window.showToast === 'function') window.showToast("✅ Order berhasil disimpan!");
     
     window.lockMenu(); 
     window.renderProductGrid(); 
     window.extractUnpaidOrders(); 
     
-    // UPDATE THE BADGE NUMBER HERE
     let tc = document.getElementById("ticket-count"); 
     if(tc) tc.innerText = window.activeLaundryTickets.length;
     
