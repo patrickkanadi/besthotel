@@ -47,72 +47,65 @@ window.setPrintMode = function(mode) {
 };
 
 // ==========================================
-// ENGINE A4 PRINT (SMART ROUTING)
+// ENGINE A4 PRINT (SMART ROUTING DENGAN HEADER/FOOTER SETTINGS)
 // ==========================================
-window.printStandardGlobal = function(title, contentHtml, totalHtml, footerText, layout = 'split') {
+window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 'split') {
     let printArea = document.getElementById("print-area");
     if (!printArea) return alert("Error: Area print tidak ditemukan di HTML.");
 
+    // Tarik data Header & Footer dari Settings Spreadsheet
+    let h1 = window.globalSettings["Receipt_Header_1"] || "HOTEL POS";
+    let h2 = window.globalSettings["Receipt_Header_2"] || "";
+    let f1 = window.globalSettings["Receipt_Footer_1"] || "TERIMA KASIH";
+    let f2 = window.globalSettings["Receipt_Footer_2"] || "";
+    let f3 = window.globalSettings["Receipt_Footer_3"] || "";
+
     if (layout === 'split') {
+        let headerHtml = `<div style="text-align:center; font-weight:900; font-size:16px; margin-bottom:2px; letter-spacing:1px;">${h1}</div>`;
+        if(h2) headerHtml += `<div style="text-align:center; font-size:10px; margin-bottom:6px;">${h2}</div>`;
+
+        let footerHtml = `<div style="text-align:center; font-size:11px; font-weight:bold; border-top:1px solid #000; padding-top:6px; margin-top:6px;">${f1}</div>`;
+        if(f2) footerHtml += `<div style="text-align:center; font-size:9px; margin-top:3px;">${f2}</div>`;
+        if(f3) footerHtml += `<div style="text-align:center; font-size:9px; margin-top:3px;">${f3}</div>`;
+
         let singleReceipt = `
             <div style="flex: 1; padding: 10px; border: 1px solid #000; border-radius: 8px; margin: 0 5px; display: flex; flex-direction: column; height: 135mm; overflow: hidden;">
-                <div style="text-align:center; font-weight:900; font-size:16px; margin-bottom:4px; letter-spacing:1px;">HOTEL POS</div>
+                ${headerHtml}
                 <div style="text-align:center; font-weight:bold; font-size:12px; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #000;">${title}</div>
                 <div style="font-size:10px; flex-grow: 1; line-height:1.3; overflow: hidden;">${contentHtml}</div>
                 <div style="font-size:11px; margin-top:5px; border-top:1px dashed #000; padding-top:6px;">${totalHtml}</div>
-                <div style="text-align:center; font-size:10px; font-weight:bold; border-top:1px solid #000; padding-top:6px; margin-top:6px;">${footerText}</div>
+                ${footerHtml}
             </div>
         `;
         printArea.innerHTML = `<div style="display:flex; justify-content:space-between; width:100%;">${singleReceipt}${singleReceipt}</div>`;
     } else {
+        let headerLarge = `<div style="text-align:center; font-weight:900; font-size:22px; margin-bottom:4px; letter-spacing:1px;">${h1}</div>`;
+        if(h2) headerLarge += `<div style="text-align:center; font-size:14px; margin-bottom:8px;">${h2}</div>`;
+
+        let footerLarge = `<div style="text-align:center; font-size:14px; font-weight:bold; border-top:2px solid #000; padding-top:15px; margin-top:15px;">${f1}</div>`;
+        if(f2) footerLarge += `<div style="text-align:center; font-size:12px; margin-top:5px;">${f2}</div>`;
+        if(f3) footerLarge += `<div style="text-align:center; font-size:12px; margin-top:5px;">${f3}</div>`;
+
         printArea.innerHTML = `
             <div style="padding: 15px; border: 1px solid #000; border-radius: 8px; max-width: 90%; margin: 0 auto;">
-                <div style="text-align:center; font-weight:900; font-size:22px; margin-bottom:5px; letter-spacing:1px;">HOTEL POS</div>
+                ${headerLarge}
                 <div style="text-align:center; font-weight:bold; font-size:16px; margin-bottom:15px; padding-bottom:10px; border-bottom:2px solid #000;">${title}</div>
                 <div style="font-size:13px; line-height:1.5;">${contentHtml}</div>
                 <div style="font-size:14px; margin-top:15px; border-top:2px dashed #000; padding-top:15px;">${totalHtml}</div>
-                <div style="text-align:center; font-size:13px; font-weight:bold; border-top:2px solid #000; padding-top:15px; margin-top:15px;">${footerText}</div>
+                ${footerLarge}
             </div>
         `;
     }
 
-    // ✅ FIX BLANK PAGE: Beri waktu browser 250ms untuk menggambar struk sebelum print!
-    setTimeout(() => {
-        window.print(); 
-    }, 250);
+    setTimeout(() => { window.print(); }, 250);
 };
 
 window.printOrderStandard = function(orderId) {
     let o = window.globalRecentOrders.find(x => x.orderId === orderId);
     if(!o) return;
-    
-    // Font diperkecil & padding dipadatkan agar muat puluhan item
-    let content = `
-        <div style="margin-bottom:8px; font-size:10px;">
-            <div style="display:flex; justify-content:space-between;"><b>Nota:</b> <span>${o.orderId}</span></div>
-            <div style="display:flex; justify-content:space-between;"><b>Kamar:</b> <span>${o.roomNumber}</span></div>
-            <div style="display:flex; justify-content:space-between;"><b>Kasir:</b> <span>${o.cashier}</span></div>
-            <div style="display:flex; justify-content:space-between;"><b>Waktu:</b> <span>${formatWIB(o.timestamp)}</span></div>
-        </div>
-        <div style="padding:5px; background:#f9f9f9; border:1px solid #eee; border-radius:3px; font-size:9.5px; line-height:1.2;">
-            ${o.readableReceipt.replace(/\n/g, '<br>')}
-        </div>
-    `;
-    
-    let total = `
-        <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>
-        ${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:3px; color:#c0392b;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}
-        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:14px; margin-top:5px; padding-top:5px; border-top:1px solid #ddd;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div>
-        <div style="margin-top:8px; font-size:9.5px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:3px;">
-            <div>Cash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}</div>
-            <div>Cash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}</div>
-            <div>QRIS: Rp ${o.qrisAmount.toLocaleString('id-ID')}</div>
-            <div>Transfer: Rp ${o.transferAmount.toLocaleString('id-ID')}</div>
-        </div>
-    `;
-    
-    // Panggil mode 'split' secara otomatis
-    window.printStandardGlobal("SALINAN NOTA", content, total, "TERIMA KASIH", "split");
+    let content = `<div style="margin-bottom:8px; font-size:10px;"><div style="display:flex; justify-content:space-between;"><b>Nota:</b> <span>${o.orderId}</span></div><div style="display:flex; justify-content:space-between;"><b>Kamar:</b> <span>${o.roomNumber}</span></div><div style="display:flex; justify-content:space-between;"><b>Kasir:</b> <span>${o.cashier}</span></div><div style="display:flex; justify-content:space-between;"><b>Waktu:</b> <span>${formatWIB(o.timestamp)}</span></div></div><div style="padding:5px; background:#f9f9f9; border:1px solid #eee; border-radius:3px; font-size:9.5px; line-height:1.2;">${o.readableReceipt.replace(/\n/g, '<br>')}</div>`;
+    let total = `<div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:3px; color:#c0392b;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}<div style="display:flex; justify-content:space-between; font-weight:bold; font-size:14px; margin-top:5px; padding-top:5px; border-top:1px solid #ddd;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div><div style="margin-top:8px; font-size:9.5px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:3px;"><div>Cash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}</div><div>Cash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}</div><div>QRIS: Rp ${o.qrisAmount.toLocaleString('id-ID')}</div><div>Transfer: Rp ${o.transferAmount.toLocaleString('id-ID')}</div></div>`;
+    window.printStandardGlobal("SALINAN NOTA", content, total, "split");
 };
 
 window.printExpenseStandard = function(expId) {
@@ -120,46 +113,23 @@ window.printExpenseStandard = function(expId) {
     if(!e) return;
     let content = `<b>ID:</b> ${e.expenseId}<br><b>Kasir:</b> ${e.cashier}<br><b>Waktu:</b> ${formatWIB(e.timestamp)}<br><b>Laci:</b> ${e.drawer}<br><b>Kategori:</b> ${e.category}<br><b>Ket:</b> ${e.description}`;
     let total = `<div style="font-size:14px; font-weight:bold; text-align:right;">TOTAL KELUAR: Rp ${e.amount.toLocaleString('id-ID')}</div>`;
-    
-    // Panggil mode 'split' secara otomatis
-    window.printStandardGlobal("BUKTI PENGELUARAN", content, total, "SIMPAN SEBAGAI BUKTI", "split");
+    window.printStandardGlobal("BUKTI PENGELUARAN", content, total, "split");
 };
 
 window.printShiftStandard = function(shiftId) {
-    // 1. Cari data di History ATAU di Shift yang sedang berjalan
     let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
-    if (!s && window.currentShiftData && window.currentShiftData.shiftId === shiftId) {
-        s = window.currentShiftData;
-    }
-    if (!s) return alert("Data shift tidak ditemukan untuk dicetak.");
-
-    // 2. PARSER AMAN: Konversi Object menjadi String jika mencetak saat End Shift
+    if (!s && window.currentShiftData && window.currentShiftData.shiftId === shiftId) s = window.currentShiftData;
+    if (!s) return alert("Data shift tidak ditemukan.");
     let foodString = "";
-    if (typeof s.foodSummary === 'string') {
-        foodString = s.foodSummary;
-    } else if (typeof s.foodSummary === 'object' && s.foodSummary !== null) {
+    if (typeof s.foodSummary === 'string') foodString = s.foodSummary;
+    else if (typeof s.foodSummary === 'object' && s.foodSummary !== null) {
         let lines = [];
-        for (const loc in s.foodSummary) {
-            lines.push(`📍 ${loc}`);
-            for (const cat in s.foodSummary[loc]) {
-                lines.push(`📁 ${cat}`);
-                for (const item in s.foodSummary[loc][cat]) {
-                    lines.push(`${item} ::: ${s.foodSummary[loc][cat][item]}`);
-                }
-            }
-        }
+        for (const loc in s.foodSummary) { lines.push(`📍 ${loc}`); for (const cat in s.foodSummary[loc]) { lines.push(`📁 ${cat}`); for (const item in s.foodSummary[loc][cat]) { lines.push(`${item} ::: ${s.foodSummary[loc][cat][item]}`); } } }
         foodString = lines.join("\n");
-    } else {
-        foodString = "Belum ada item terjual";
-    }
-
-    // 3. Masukkan ke dalam format HTML
+    } else foodString = "Belum ada item terjual";
     let content = `<b>Shift:</b> ${s.shiftId}<br><b>Kasir:</b> ${s.cashier}<br><b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br><b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br><br><b>Item Terjual:</b><br>${foodString.replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}`;
-    
     let total = `<b>Omset Laundry:</b> Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}<br><b>Omset Hotel:</b> Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}<br><br><b>Netto Laci Laundry:</b> Rp ${(s.netLaundry||0).toLocaleString('id-ID')}<br><b>Netto Laci Hotel:</b> Rp ${(s.netHotel||0).toLocaleString('id-ID')}`;
-    
-    // Gunakan mode "single" agar Shift Report bisa menggunakan seluruh halaman A4 (memanjang ke bawah)
-    window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "TERIMA KASIH", "single");
+    window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "single");
 };
 
 // 1. INIT DB
@@ -264,14 +234,96 @@ function formatEscPosLine(left, right, isBig) {
     return leftStr + "\n" + " ".repeat(Math.max(0, maxLen - rightStr.length)) + rightStr;
 }
 
+window.printGlobalReceipt = async function(title, contentStr, totalStr) {
+    if (!btCharacteristic) return alert("⚠️ Printer belum terhubung!");
+    const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00";
+    const CMD_BOLD_ON = "\x1B\x45\x01"; const CMD_BOLD_OFF = "\x1B\x45\x00";
+    const CMD_BIG = "\x1B!\x11"; const CMD_NORMAL = "\x1B!\x00"; const CMD_CUT = "\x1D\x56\x41\x10";
+
+    let h1 = window.globalSettings["Receipt_Header_1"] || "HOTEL POS";
+    let h2 = window.globalSettings["Receipt_Header_2"] || "";
+    let f1 = window.globalSettings["Receipt_Footer_1"] || "TERIMA KASIH";
+    let f2 = window.globalSettings["Receipt_Footer_2"] || "";
+    let f3 = window.globalSettings["Receipt_Footer_3"] || "";
+
+    let r = CMD_INIT + CMD_CENTER + CMD_BOLD_ON + CMD_BIG + h1 + "\n" + CMD_NORMAL + CMD_BOLD_OFF;
+    if(h2) r += CMD_CENTER + h2 + "\n";
+    
+    r += CMD_CENTER + title + "\n";
+    r += "--------------------------------\n" + CMD_LEFT;
+    r += contentStr + "\n";
+    r += "--------------------------------\n";
+    if (totalStr) {
+        r += CMD_BOLD_ON + totalStr + "\n" + CMD_BOLD_OFF + "--------------------------------\n";
+    }
+    
+    r += CMD_CENTER + CMD_BOLD_ON + f1 + "\n" + CMD_BOLD_OFF;
+    if(f2) r += CMD_CENTER + f2 + "\n";
+    if(f3) r += CMD_CENTER + f3 + "\n";
+    
+    r += "\n\n\n\n" + CMD_CUT;
+    try {
+        const encoder = new TextEncoder();
+        await sendToPrinter(encoder.encode(r));
+    } catch(e) { alert("Gagal mencetak: " + e); }
+};
+
+window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, payMethod) {
+    const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00";
+    const CMD_BOLD_ON = "\x1B\x45\x01"; const CMD_BOLD_OFF = "\x1B\x45\x00";
+    const CMD_BIG = "\x1B!\x11"; const CMD_NORMAL = "\x1B!\x00"; const CMD_CUT = "\x1D\x56\x41\x10";
+
+    let h1 = window.globalSettings["Receipt_Header_1"] || "HOTEL POS";
+    let h2 = window.globalSettings["Receipt_Header_2"] || "";
+    let f1 = window.globalSettings["Receipt_Footer_1"] || "TERIMA KASIH";
+    let f2 = window.globalSettings["Receipt_Footer_2"] || "";
+    let f3 = window.globalSettings["Receipt_Footer_3"] || "";
+
+    let receipt = CMD_INIT + CMD_CENTER + CMD_BOLD_ON + CMD_BIG + h1 + "\n" + CMD_NORMAL + CMD_BOLD_OFF;
+    if(h2) receipt += CMD_CENTER + h2 + "\n";
+    
+    receipt += CMD_CENTER + formatWIB(order.timestamp || new Date().toISOString()) + "\n";
+    receipt += "--------------------------------\n" + CMD_LEFT;
+    receipt += "Nota: " + orderId + "\nKamar: " + order.roomNumber + "\nKsr : " + order.cashier + "\n--------------------------------\n";
+
+    order.items.forEach(item => {
+        const qtyDisplay = item.qty % 1 !== 0 ? item.qty.toFixed(2) : item.qty;
+        const lineTotal = (item.qty * item.price).toLocaleString('id-ID'); 
+        receipt += formatEscPosLine(`${qtyDisplay}x ${item.name.substring(0,18)}`, lineTotal, false) + "\n";
+    });
+
+    receipt += "--------------------------------\n";
+    receipt += formatEscPosLine("Subtotal", order.subtotal.toLocaleString('id-ID'), false) + "\n";
+    if (order.discounts && order.discounts > 0) { receipt += formatEscPosLine("Diskon", "-" + order.discounts.toLocaleString('id-ID'), false) + "\n"; }
+    receipt += CMD_BOLD_ON + CMD_BIG + formatEscPosLine("TOTAL", order.grandTotal.toLocaleString('id-ID'), true) + "\n" + CMD_NORMAL + CMD_BOLD_OFF + "\n";
+    receipt += formatEscPosLine(`Tercatat(${payMethod})`, deposit.toLocaleString('id-ID'), false) + "\n";
+    receipt += CMD_BOLD_ON + formatEscPosLine("STATUS", remaining > 0 ? "BELUM LUNAS" : "LUNAS", false) + "\n" + CMD_BOLD_OFF;
+    receipt += "--------------------------------\n";
+    
+    receipt += CMD_CENTER + CMD_BOLD_ON + f1 + "\n" + CMD_BOLD_OFF;
+    if(f2) receipt += CMD_CENTER + f2 + "\n";
+    if(f3) receipt += CMD_CENTER + f3 + "\n";
+    
+    receipt += "\n\n\n\n" + CMD_CUT;
+
+    const encoder = new TextEncoder(); await sendToPrinter(encoder.encode(receipt));
+};
+
 window.buildShiftReportReceipt = async function(data) {
-    const h1 = "HOTEL POS";
     const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00"; 
     const CMD_BOLD_ON = "\x1B\x45\x01"; const CMD_BOLD_OFF = "\x1B\x45\x00"; 
     const CMD_BIG = "\x1B!\x11"; const CMD_NORMAL = "\x1B!\x00"; const CMD_CUT = "\x1D\x56\x41\x10";
 
+    let h1 = window.globalSettings["Receipt_Header_1"] || "HOTEL POS";
+    let h2 = window.globalSettings["Receipt_Header_2"] || "";
+    let f1 = window.globalSettings["Receipt_Footer_1"] || "TERIMA KASIH";
+    let f2 = window.globalSettings["Receipt_Footer_2"] || "";
+    let f3 = window.globalSettings["Receipt_Footer_3"] || "";
+
     let r = CMD_INIT + CMD_CENTER + CMD_BOLD_ON + CMD_BIG + h1 + "\n" + CMD_NORMAL + CMD_BOLD_OFF;
-    r += "LAPORAN TUTUP SHIFT\n--------------------------------\n" + CMD_LEFT;
+    if(h2) r += CMD_CENTER + h2 + "\n";
+    
+    r += CMD_CENTER + "LAPORAN TUTUP SHIFT\n--------------------------------\n" + CMD_LEFT;
     r += "ID Shift: " + data.shiftId + "\nKasir   : " + data.cashier + "\nLogin   : " + formatTimeOnlyWIB(data.loginTime) + "\nLogout  : " + formatTimeOnlyWIB(data.logoutTime) + "\n--------------------------------\n";
     r += formatEscPosLine("Total Pesanan", data.totalOrders, false) + "\n--------------------------------\n";
     
@@ -293,59 +345,12 @@ window.buildShiftReportReceipt = async function(data) {
     r += formatEscPosLine("Laci Laundry", (data.netLaundry || 0).toLocaleString('id-ID'), false) + "\n";
     r += formatEscPosLine("Laci Hotel", (data.netHotel || 0).toLocaleString('id-ID'), false) + "\n--------------------------------\n";
     
+    r += CMD_CENTER + CMD_BOLD_ON + f1 + "\n" + CMD_BOLD_OFF;
+    if(f2) r += CMD_CENTER + f2 + "\n";
+    if(f3) r += CMD_CENTER + f3 + "\n";
+    
     r += "\n\n\n\n" + CMD_CUT;
     const encoder = new TextEncoder(); await sendToPrinter(encoder.encode(r));
-};
-
-window.printGlobalReceipt = async function(title, contentStr, totalStr, footerStr) {
-    if (!btCharacteristic) return alert("⚠️ Printer belum terhubung!");
-    const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00";
-    const CMD_BOLD_ON = "\x1B\x45\x01"; const CMD_BOLD_OFF = "\x1B\x45\x00";
-    const CMD_BIG = "\x1B!\x11"; const CMD_NORMAL = "\x1B!\x00"; const CMD_CUT = "\x1D\x56\x41\x10";
-
-    let r = CMD_INIT + CMD_CENTER + CMD_BOLD_ON + CMD_BIG + "HOTEL POS\n" + CMD_NORMAL + CMD_BOLD_OFF;
-    r += CMD_CENTER + title + "\n";
-    r += "--------------------------------\n" + CMD_LEFT;
-    r += contentStr + "\n";
-    r += "--------------------------------\n";
-    if (totalStr) {
-        r += CMD_BOLD_ON + totalStr + "\n" + CMD_BOLD_OFF + "--------------------------------\n";
-    }
-    r += CMD_CENTER + footerStr + "\n\n\n\n" + CMD_CUT;
-    
-    try {
-        const encoder = new TextEncoder();
-        await sendToPrinter(encoder.encode(r));
-    } catch(e) { alert("Gagal mencetak: " + e); }
-};
-
-window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, payMethod) {
-    const h1 = "HOTEL POS"; 
-    const CMD_INIT = "\x1B\x40"; const CMD_CENTER = "\x1B\x61\x01"; const CMD_LEFT = "\x1B\x61\x00";
-    const CMD_BOLD_ON = "\x1B\x45\x01"; const CMD_BOLD_OFF = "\x1B\x45\x00";
-    const CMD_BIG = "\x1B!\x11"; const CMD_NORMAL = "\x1B!\x00"; const CMD_CUT = "\x1D\x56\x41\x10";
-
-    let receipt = CMD_INIT + CMD_CENTER + CMD_BOLD_ON + CMD_BIG + h1 + "\n" + CMD_NORMAL + CMD_BOLD_OFF;
-    receipt += formatWIB(order.timestamp || new Date().toISOString()) + "\n";
-    receipt += "--------------------------------\n" + CMD_LEFT;
-    receipt += "Nota: " + orderId + "\nKamar: " + order.roomNumber + "\nKsr : " + order.cashier + "\n--------------------------------\n";
-
-    order.items.forEach(item => {
-        const qtyDisplay = item.qty % 1 !== 0 ? item.qty.toFixed(2) : item.qty;
-        const lineTotal = (item.qty * item.originalPrice).toLocaleString('id-ID');
-        receipt += formatEscPosLine(`${qtyDisplay}x ${item.name.substring(0,18)}`, lineTotal, false) + "\n";
-    });
-
-    receipt += "--------------------------------\n";
-    receipt += formatEscPosLine("Subtotal", order.subtotal.toLocaleString('id-ID'), false) + "\n";
-    if (order.discounts && order.discounts > 0) { receipt += formatEscPosLine("Diskon", "-" + order.discounts.toLocaleString('id-ID'), false) + "\n"; }
-    receipt += CMD_BOLD_ON + CMD_BIG + formatEscPosLine("TOTAL", order.grandTotal.toLocaleString('id-ID'), true) + "\n" + CMD_NORMAL + CMD_BOLD_OFF + "\n";
-    receipt += formatEscPosLine(`Tercatat(${payMethod})`, deposit.toLocaleString('id-ID'), false) + "\n";
-    receipt += CMD_BOLD_ON + formatEscPosLine("STATUS", remaining > 0 ? "BELUM LUNAS" : "LUNAS", false) + "\n" + CMD_BOLD_OFF;
-    receipt += "--------------------------------\n" + CMD_CENTER + CMD_BOLD_ON + "TERIMA KASIH\n" + CMD_BOLD_OFF;
-    receipt += "\n\n\n\n" + CMD_CUT;
-
-    const encoder = new TextEncoder(); await sendToPrinter(encoder.encode(receipt));
 };
 
 window.updateTabLabels = function() {
