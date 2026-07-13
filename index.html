@@ -97,23 +97,18 @@
     </style>
 
     <style>
-        /* Sembunyikan area struk di layar tablet normal */
+        /* Sembunyikan area struk di layar normal */
         @media screen {
             #print-area { display: none !important; }
         }
         
-        /* Pengaturan Print Bebas (Javascript akan mengatur Kiri/Kanan vs Penuh) */
+        /* Pengaturan Print A4 */
         @media print {
-            @page {
-                size: A4 portrait;
-                margin: 5mm; 
-            }
-            /* Sembunyikan POS Utama */
-            body > *:not(#print-area) { display: none !important; }
+            body * { visibility: hidden; }
             
             #print-area, #print-area * { visibility: visible; }
+            
             #print-area {
-                display: block !important;
                 position: absolute; 
                 left: 0; 
                 top: 0; 
@@ -121,6 +116,11 @@
                 background: white; 
                 color: black; 
                 font-family: Arial, sans-serif;
+            }
+            
+            @page {
+                size: A4 portrait;
+                margin: 5mm; 
             }
         }
     </style>
