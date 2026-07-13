@@ -126,16 +126,39 @@ window.printExpenseStandard = function(expId) {
 };
 
 window.printShiftStandard = function(shiftId) {
-    // ✅ FIX: Cari di History ATAU di Shift yang sedang berjalan saat ini
+    // 1. Cari data di History ATAU di Shift yang sedang berjalan
     let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
     if (!s && window.currentShiftData && window.currentShiftData.shiftId === shiftId) {
         s = window.currentShiftData;
     }
     if (!s) return alert("Data shift tidak ditemukan untuk dicetak.");
 
-    let content = `<b>Shift:</b> ${s.shiftId}<br><b>Kasir:</b> ${s.cashier}<br><b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br><b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br><br><b>Item Terjual:</b><br>${(s.foodSummary || "Belum ada item terjual").replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}`;
+    // 2. PARSER AMAN: Konversi Object menjadi String jika mencetak saat End Shift
+    let foodString = "";
+    if (typeof s.foodSummary === 'string') {
+        foodString = s.foodSummary;
+    } else if (typeof s.foodSummary === 'object' && s.foodSummary !== null) {
+        let lines = [];
+        for (const loc in s.foodSummary) {
+            lines.push(`📍 ${loc}`);
+            for (const cat in s.foodSummary[loc]) {
+                lines.push(`📁 ${cat}`);
+                for (const item in s.foodSummary[loc][cat]) {
+                    lines.push(`${item} ::: ${s.foodSummary[loc][cat][item]}`);
+                }
+            }
+        }
+        foodString = lines.join("\n");
+    } else {
+        foodString = "Belum ada item terjual";
+    }
+
+    // 3. Masukkan ke dalam format HTML
+    let content = `<b>Shift:</b> ${s.shiftId}<br><b>Kasir:</b> ${s.cashier}<br><b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br><b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br><br><b>Item Terjual:</b><br>${foodString.replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}`;
+    
     let total = `<b>Omset Laundry:</b> Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}<br><b>Omset Hotel:</b> Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}<br><br><b>Netto Laci Laundry:</b> Rp ${(s.netLaundry||0).toLocaleString('id-ID')}<br><b>Netto Laci Hotel:</b> Rp ${(s.netHotel||0).toLocaleString('id-ID')}`;
     
+    // Gunakan mode "single" agar Shift Report bisa menggunakan seluruh halaman A4 (memanjang ke bawah)
     window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "TERIMA KASIH", "single");
 };
 
