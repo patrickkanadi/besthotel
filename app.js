@@ -1360,7 +1360,7 @@ window.submitEmergencyInbound = async function() {
     let payload = {
         action: "emergencyInbound",
         data: {
-            inboundId: "INB-EMG-" + Date.now(), // ✅ ID UNIK DITAMBAHKAN DI SINI
+            inboundId: "INB-EMG-" + Date.now(), // ID Unik
             timestamp: new Date().toISOString(),
             itemName: itemName,
             qty: qty,
@@ -1370,12 +1370,13 @@ window.submitEmergencyInbound = async function() {
         }
     };
 
-    let menuItem = window.globalMenuData.find(m => m.name === itemName);
+    // ✅ FIX: Hapus "window." agar tidak error "undefined"
+    let menuItem = globalMenuData.find(m => m.name === itemName);
     if(menuItem) menuItem.currentStock += qty;
     window.renderProductGrid(); 
 
     document.getElementById("emergency-inbound-modal").classList.add("hidden");
-    window.showToast("⏳ Mengirim Data Inbound...");
+    if (typeof window.showToast === 'function') window.showToast("⏳ Mengirim Data Inbound...");
 
     try {
         const response = await fetch(`${API_URL}?action=emergencyInbound`, {
@@ -1385,11 +1386,12 @@ window.submitEmergencyInbound = async function() {
         const result = await response.json();
         
         if (result.status === "Success") {
-            window.showToast("✅ Stok Darurat Berhasil Ditambah!");
+            if (typeof window.showToast === 'function') window.showToast("✅ Stok Darurat Berhasil Ditambah!");
             window.syncMasterData(); 
         } else throw new Error(result.message);
     } catch(e) {
         alert("⚠️ Gagal mengirim inbound: " + e);
+        // Rollback jika gagal
         if(menuItem) menuItem.currentStock -= qty; 
         window.renderProductGrid();
     }
