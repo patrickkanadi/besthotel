@@ -103,8 +103,43 @@ window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 's
 window.printOrderStandard = function(orderId) {
     let o = window.globalRecentOrders.find(x => x.orderId === orderId);
     if(!o) return;
-    let content = `<div style="margin-bottom:8px; font-size:10px;"><div style="display:flex; justify-content:space-between;"><b>Nota:</b> <span>${o.orderId}</span></div><div style="display:flex; justify-content:space-between;"><b>Kamar:</b> <span>${o.roomNumber}</span></div><div style="display:flex; justify-content:space-between;"><b>Kasir:</b> <span>${o.cashier}</span></div><div style="display:flex; justify-content:space-between;"><b>Waktu:</b> <span>${formatWIB(o.timestamp)}</span></div></div><div style="padding:5px; background:#f9f9f9; border:1px solid #eee; border-radius:3px; font-size:9.5px; line-height:1.2;">${o.readableReceipt.replace(/\n/g, '<br>')}</div>`;
-    let total = `<div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:3px; color:#c0392b;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}<div style="display:flex; justify-content:space-between; font-weight:bold; font-size:14px; margin-top:5px; padding-top:5px; border-top:1px solid #ddd;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div><div style="margin-top:8px; font-size:9.5px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:3px;"><div>Cash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}</div><div>Cash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}</div><div>QRIS: Rp ${o.qrisAmount.toLocaleString('id-ID')}</div><div>Transfer: Rp ${o.transferAmount.toLocaleString('id-ID')}</div></div>`;
+    
+    // Konversi string struk menjadi Tabel HTML agar harga rata kanan
+    let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:5px; margin-bottom:5px;">`;
+    let lines = o.readableReceipt.split('\n');
+    lines.forEach(line => {
+        if(!line.trim()) return;
+        // Tangkap Format: • 1x Nasi Goreng [H] (Rp 25.000)
+        let match = line.match(/•\s*([\d.]+x)\s*(.*?)\s*(?:\[[LH]\])?\s*\((Rp\s*[\d.,]+)\)/i);
+        if(match) {
+            itemsHtml += `<tr><td style="padding:4px 0; border-bottom:1px dashed #eee;">${match[1]} ${match[2]}</td><td style="text-align:right; padding:4px 0; border-bottom:1px dashed #eee; white-space:nowrap; font-weight:bold;">${match[3]}</td></tr>`;
+        } else {
+            itemsHtml += `<tr><td colspan="2" style="padding:4px 0; border-bottom:1px dashed #eee;">${line}</td></tr>`;
+        }
+    });
+    itemsHtml += `</table>`;
+
+    let content = `
+        <div style="margin-bottom:10px; font-size:13px; border-bottom:2px solid #000; padding-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><b>Nota:</b> <span>${o.orderId}</span></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><b>Kamar:</b> <span>${o.roomNumber}</span></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><b>Kasir:</b> <span>${o.cashier}</span></div>
+            <div style="display:flex; justify-content:space-between;"><b>Waktu:</b> <span>${formatWIB(o.timestamp)}</span></div>
+        </div>
+        ${itemsHtml}
+    `;
+    
+    let total = `
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:13px;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>
+        ${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#c0392b; font-size:13px;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}
+        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:18px; margin-top:8px; padding-top:8px; border-top:1px solid #000;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div>
+        <div style="margin-top:12px; font-size:10px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:5px; padding-top:8px; border-top:1px dashed #aaa;">
+            <div>Cash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}</div>
+            <div>Cash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}</div>
+            <div>QRIS: Rp ${o.qrisAmount.toLocaleString('id-ID')}</div>
+            <div>Transfer: Rp ${o.transferAmount.toLocaleString('id-ID')}</div>
+        </div>
+    `;
     window.printStandardGlobal("SALINAN NOTA", content, total, "split");
 };
 
@@ -120,15 +155,43 @@ window.printShiftStandard = function(shiftId) {
     let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
     if (!s && window.currentShiftData && window.currentShiftData.shiftId === shiftId) s = window.currentShiftData;
     if (!s) return alert("Data shift tidak ditemukan.");
-    let foodString = "";
-    if (typeof s.foodSummary === 'string') foodString = s.foodSummary;
-    else if (typeof s.foodSummary === 'object' && s.foodSummary !== null) {
-        let lines = [];
-        for (const loc in s.foodSummary) { lines.push(`📍 ${loc}`); for (const cat in s.foodSummary[loc]) { lines.push(`📁 ${cat}`); for (const item in s.foodSummary[loc][cat]) { lines.push(`${item} ::: ${s.foodSummary[loc][cat][item]}`); } } }
-        foodString = lines.join("\n");
-    } else foodString = "Belum ada item terjual";
-    let content = `<b>Shift:</b> ${s.shiftId}<br><b>Kasir:</b> ${s.cashier}<br><b>Masuk:</b> ${formatTimeOnlyWIB(s.loginTime)}<br><b>Keluar:</b> ${formatTimeOnlyWIB(s.logoutTime)}<br><br><b>Item Terjual:</b><br>${foodString.replace(/📍/g, '<br><b>').replace(/📁/g, '</b><br><i>').replace(/:::/g, ' - ')}`;
-    let total = `<b>Omset Laundry:</b> Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}<br><b>Omset Hotel:</b> Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}<br><br><b>Netto Laci Laundry:</b> Rp ${(s.netLaundry||0).toLocaleString('id-ID')}<br><b>Netto Laci Hotel:</b> Rp ${(s.netHotel||0).toLocaleString('id-ID')}`;
+    
+    // Render Hierarki Item Terjual agar rapi (Seperti Gambar 3)
+    let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:14px; margin-top:10px;">`;
+    if (typeof s.foodSummary === 'string' && s.foodSummary.length > 0) {
+        itemsHtml += `<tr><td>${s.foodSummary}</td></tr>`;
+    } else if (typeof s.foodSummary === 'object' && s.foodSummary !== null && Object.keys(s.foodSummary).length > 0) {
+        for (const loc in s.foodSummary) { 
+            itemsHtml += `<tr><td colspan="2" style="font-weight:bold; color:#000; padding-top:12px; border-bottom:1px solid #aaa;">📍 ${loc}</td></tr>`;
+            for (const cat in s.foodSummary[loc]) { 
+                itemsHtml += `<tr><td colspan="2" style="font-weight:bold; font-style:italic; color:#555; padding-top:6px; padding-left:10px;">📁 ${cat}</td></tr>`;
+                for (const item in s.foodSummary[loc][cat]) { 
+                    itemsHtml += `<tr><td style="padding:4px 0 4px 25px;">${item}</td><td style="text-align:right; font-weight:bold;">${s.foodSummary[loc][cat][item]}x</td></tr>`; 
+                } 
+            } 
+        }
+    } else {
+        itemsHtml += `<tr><td style="text-align:center; color:#888;">Belum ada item terjual</td></tr>`;
+    }
+    itemsHtml += `</table>`;
+
+    let content = `
+        <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:5px;"><b>Shift:</b> <span>${s.shiftId}</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:5px;"><b>Kasir:</b> <span>${s.cashier}</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:5px;"><b>Masuk:</b> <span>${formatTimeOnlyWIB(s.loginTime)}</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:14px; border-bottom:2px solid #000; padding-bottom:12px; margin-bottom:12px;"><b>Keluar:</b> <span>${formatTimeOnlyWIB(s.logoutTime)}</span></div>
+        <div style="font-weight:bold; font-size:16px; margin-top:15px; color:#2c3e50;">Rincian Item Terjual:</div>
+        ${itemsHtml}
+    `;
+    
+    let total = `
+        <table style="width:100%; border-collapse:collapse; font-size:15px;">
+            <tr><td style="padding:5px 0;">Omset Laundry</td><td style="text-align:right; font-weight:bold;">Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:5px 0; border-bottom:1px solid #aaa;">Omset Hotel</td><td style="text-align:right; font-weight:bold; border-bottom:1px solid #aaa;">Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:10px 0 5px 0;">Netto Laci Laundry</td><td style="text-align:right; font-weight:bold; color:#27ae60; padding-top:10px;">Rp ${(s.netLaundry||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:5px 0;">Netto Laci Hotel</td><td style="text-align:right; font-weight:bold; color:#27ae60;">Rp ${(s.netHotel||0).toLocaleString('id-ID')}</td></tr>
+        </table>
+    `;
     window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "single");
 };
 
@@ -286,10 +349,14 @@ window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, p
     receipt += "--------------------------------\n" + CMD_LEFT;
     receipt += "Nota: " + orderId + "\nKamar: " + order.roomNumber + "\nKsr : " + order.cashier + "\n--------------------------------\n";
 
+    // Item Printout Baru: Nama Barang di atas, Qty & Harga rata kanan di bawah
     order.items.forEach(item => {
         const qtyDisplay = item.qty % 1 !== 0 ? item.qty.toFixed(2) : item.qty;
+        const priceStr = item.price.toLocaleString('id-ID');
         const lineTotal = (item.qty * item.price).toLocaleString('id-ID'); 
-        receipt += formatEscPosLine(`${qtyDisplay}x ${item.name.substring(0,18)}`, lineTotal, false) + "\n";
+        
+        receipt += `${item.name.substring(0,32)}\n`;
+        receipt += formatEscPosLine(`  ${qtyDisplay}x Rp ${priceStr}`, `Rp ${lineTotal}`, false) + "\n";
     });
 
     receipt += "--------------------------------\n";
@@ -324,8 +391,24 @@ window.buildShiftReportReceipt = async function(data) {
     if(h2) r += CMD_CENTER + h2 + "\n";
     
     r += CMD_CENTER + "LAPORAN TUTUP SHIFT\n--------------------------------\n" + CMD_LEFT;
-    r += "ID Shift: " + data.shiftId + "\nKasir   : " + data.cashier + "\nLogin   : " + formatTimeOnlyWIB(data.loginTime) + "\nLogout  : " + formatTimeOnlyWIB(data.logoutTime) + "\n--------------------------------\n";
-    r += formatEscPosLine("Total Pesanan", data.totalOrders, false) + "\n--------------------------------\n";
+    r += "ID Shift: " + data.shiftId + "\nKasir   : " + data.cashier + "\nMasuk   : " + formatTimeOnlyWIB(data.loginTime) + "\nKeluar  : " + formatTimeOnlyWIB(data.logoutTime) + "\n--------------------------------\n";
+    
+    // Tambahan Rincian Item Terjual di Bluetooth
+    r += CMD_BOLD_ON + "ITEM TERJUAL:" + CMD_BOLD_OFF + "\n";
+    if (typeof data.foodSummary === 'object' && data.foodSummary !== null && Object.keys(data.foodSummary).length > 0) {
+        for (const loc in data.foodSummary) {
+            r += `[${loc}]\n`;
+            for (const cat in data.foodSummary[loc]) {
+                for (const item in data.foodSummary[loc][cat]) {
+                    let qty = data.foodSummary[loc][cat][item];
+                    r += formatEscPosLine(` ${item.substring(0, 24)}`, `${qty}x`, false) + "\n";
+                }
+            }
+        }
+    } else {
+        r += " Belum ada item terjual\n";
+    }
+    r += "--------------------------------\n";
     
     r += CMD_BOLD_ON + "PENERIMAAN LAUNDRY:" + CMD_BOLD_OFF + "\n";
     r += formatEscPosLine("Tunai", (data.cashLaundry || 0).toLocaleString('id-ID'), false) + "\n";
