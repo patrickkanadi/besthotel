@@ -528,15 +528,15 @@ window.buildShiftReportReceipt = async function(data) {
 // FIX: SETTLEMENT / PELUNASAN MODAL
 // ==========================================
 
-window.// ==========================================
-// FIX: SETTLEMENT / PELUNASAN MODAL FLOW
+// ==========================================
+// FIX: INSTANT UI REFRESH & PRECISE COLUMN G UPDATE
 // ==========================================
 
 window.printSettlement = async function() {
     if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
     let ticket = window.activeSettlementTicket;
     
-    // 1. Simpan Pembayaran Terlebih Dahulu
+    // 1. Hitung Pembayaran
     let cashL = Number(document.getElementById("settle-cash-laundry")?.value || document.getElementById("settlement-cash-laundry")?.value || 0);
     let cashH = Number(document.getElementById("settle-cash-hotel")?.value || document.getElementById("settlement-cash-hotel")?.value || 0);
     let qris = Number(document.getElementById("settle-qris")?.value || document.getElementById("settlement-qris")?.value || 0);
@@ -553,27 +553,40 @@ window.printSettlement = async function() {
     
     let allPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0);
 
-    if (allPaid >= ticket.grandTotal) ticket.orderStatus = "Completed";
+    // 2. Jika Lunas, hapus instan dari antarmuka agar tidak nyangkut!
+    if (allPaid >= ticket.grandTotal) {
+        ticket.orderStatus = "Completed";
+        // Filter membuang tiket ini dari memori layar aktif
+        window.activeLaundryTickets = window.activeLaundryTickets.filter(t => t.orderId !== ticket.orderId);
+    }
     ticket.syncStatus = "Pending";
 
+    // Simpan ke database lokal
     db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
 
-    // 2. Feedback sesuai request
+    // 3. Berikan Alert
     alert("Order is confirmed and print");
 
-    // 3. Tutup Modal
+    // Tutup Modal
     let mod = document.getElementById("settlement-modal") || document.getElementById("rincian-pembayaran-modal");
     if(mod) mod.classList.add("hidden");
 
+    // Refresh UI secara instan (tiket akan otomatis menghilang dari layar)
     if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
     if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
+    
+    // 4. Tembak HANYA Kolom G ke Spreadsheet (Kolom H dibiarkan utuh)
+    fetch(API_URL, { 
+        method: 'POST', mode: 'cors', 
+        body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed" }) 
+    });
+
+    // Jalankan sync uang di background
     window.runBackgroundSync();
 
-    // 4. Proses Cetak
+    // 5. Cetak dan kembali ke Home
     await window.printOrderGlobal(ticket.orderId);
 
-    // 5. Kembali ke Home (POS)
-    // Diberi jeda 300ms agar dialog print A4 sempat terbuka dengan sempurna
     setTimeout(() => {
         if (typeof window.switchTab === 'function') window.switchTab('pos');
     }, 300);
@@ -583,7 +596,7 @@ window.submitSettlement = async function() {
     if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
     let ticket = window.activeSettlementTicket;
     
-    // 1. Ambil Data Pembayaran
+    // 1. Hitung Pembayaran
     let cashL = Number(document.getElementById("settle-cash-laundry")?.value || document.getElementById("settlement-cash-laundry")?.value || 0);
     let cashH = Number(document.getElementById("settle-cash-hotel")?.value || document.getElementById("settlement-cash-hotel")?.value || 0);
     let qris = Number(document.getElementById("settle-qris")?.value || document.getElementById("settlement-qris")?.value || 0);
@@ -596,7 +609,6 @@ window.submitSettlement = async function() {
     let totalPay = cashL + cashH + qris + trf;
     if (totalPay <= 0) return alert("⚠️ Silakan masukkan nominal pembayaran pelunasan.");
 
-    // 2. Update Angka
     ticket.cashLaundryAmount = (Number(ticket.cashLaundryAmount)||0) + cashL;
     ticket.cashHotelAmount = (Number(ticket.cashHotelAmount)||0) + cashH;
     ticket.qrisAmount = (Number(ticket.qrisAmount)||0) + qris;
@@ -604,24 +616,36 @@ window.submitSettlement = async function() {
     
     let allPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0);
 
-    if (allPaid >= ticket.grandTotal) ticket.orderStatus = "Completed";
+    // 2. Jika Lunas, hapus instan dari antarmuka agar tidak nyangkut!
+    if (allPaid >= ticket.grandTotal) {
+        ticket.orderStatus = "Completed";
+        // Filter membuang tiket ini dari memori layar aktif
+        window.activeLaundryTickets = window.activeLaundryTickets.filter(t => t.orderId !== ticket.orderId);
+    }
     ticket.syncStatus = "Pending";
 
-    // 3. Simpan ke database lokal
     db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
 
-    // 4. Feedback sesuai request
+    // 3. Berikan Alert
     alert("Order is recorded");
     
-    // 5. Tutup Modal
+    // Tutup Modal
     let mod = document.getElementById("settlement-modal") || document.getElementById("rincian-pembayaran-modal");
     if(mod) mod.classList.add("hidden");
 
-    // 6. Refresh state & kembali ke Home (POS)
+    // Refresh UI secara instan
     if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
     if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
+    
+    // 4. Tembak HANYA Kolom G ke Spreadsheet (Kolom H dibiarkan utuh)
+    fetch(API_URL, { 
+        method: 'POST', mode: 'cors', 
+        body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed" }) 
+    });
+
     window.runBackgroundSync();
     
+    // 5. Kembali ke Home
     if (typeof window.switchTab === 'function') window.switchTab('pos');
 };
 
