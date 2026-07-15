@@ -1208,63 +1208,86 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
     window.runBackgroundSync();
 };
 
-window.renderActiveTickets = function() {
-    try {
+window.renderActiveTickets = function() { 
+    try { 
         const grid = document.getElementById("ticket-grid-container"); if(!grid) return;
-        grid.innerHTML = "";
-        if(!window.activeLaundryTickets || window.activeLaundryTickets.length === 0) {
-            grid.innerHTML = `<p style="color:#7f8c8d;">Tidak ada layanan aktif saat ini.</p>`; return;
-        }
-
-        window.activeLaundryTickets.forEach((ticket) => {
-            try {
-                const isReady = ticket.orderStatus === "Ready for Pickup";
-                const totalPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0);
-                const remaining = (Number(ticket.grandTotal)||0) - totalPaid;
-
-                let receiptText = ticket.readableReceipt || "";
-                if (!receiptText && Array.isArray(ticket.items)) {
+        grid.innerHTML = ""; 
+        if(!window.activeLaundryTickets || window.activeLaundryTickets.length === 0) { 
+            grid.innerHTML = `Tidak ada layanan aktif saat ini.`;
+            return; 
+        } 
+        
+        window.activeLaundryTickets.forEach((ticket) => { 
+            try { 
+                const isReady = ticket.orderStatus === "Ready for Pickup"; 
+                const totalPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0); 
+                const remaining = ticket.grandTotal - totalPaid; 
+                let receiptText = ticket.readableReceipt || ""; 
+                if (!receiptText && Array.isArray(ticket.items)) { 
                     receiptText = ticket.items.map(i => `${i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty}x ${i.name}`).join('\n');
-                }
-                if (!receiptText) receiptText = "Rincian tidak tersedia";
+                } 
+                if (!receiptText) receiptText = "Rincian tidak tersedia"; 
+                
+                // ✅ FIX: Kalkulasi harus di atas sebelum digunakan oleh tombol!
+                let safeRemaining = Number(remaining) || 0; 
 
                 let buttonsHtml = "";
-                if (!isReady) { 
-                    buttonsHtml = `<button class="ticket-btn" style="background:#f39c12;" onclick="window.markTicketReady('${ticket.orderId}')">Tandai Selesai Diproses (Ready)</button>`; 
-                } else { 
-                    buttonsHtml = `<button class="ticket-btn" style="background:#2ecc71;" onclick="window.openSettlement('${ticket.orderId}', ${remaining})">Ambil Layanan & Pelunasan</button>`; 
-                }
+                if (!isReady) {                     
+                    buttonsHtml = `<button class="ticket-btn" style="background:#f39c12;" onclick="window.markTicketReady('${ticket.orderId}')">Tandai Selesai Diproses (Ready)</button>`;
+                } else {                     
+                    buttonsHtml = `<button class="ticket-btn" style="background:#2ecc71;" onclick="window.openSettlement('${ticket.orderId}', ${safeRemaining})">Ambil Layanan & Pelunasan</button>`;
+                } 
                 
-                let safeRemaining = Number(remaining) || 0;
-
                 grid.innerHTML += `<div class="ticket-card ${isReady ? 'ready' : ''}">
-                    <div class="ticket-header"><span>Kamar: ${ticket.roomNumber || '-'}</span> <span style="color:#7f8c8d; font-size:12px;">${ticket.orderId}</span></div>
-                    <div style="font-size:14px; margin-bottom:10px; white-space:pre-wrap;">${receiptText}</div>
-                    <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:10px; border-top:1px dashed #ddd; padding-top:5px;">
-                        <span>Tagihan Sisa:</span> <strong style="color:#e74c3c;">Rp ${safeRemaining.toLocaleString('id-ID')}</strong>
+                    <div class="ticket-header">
+                        <span>Kamar: ${ticket.roomNumber || '-'}</span>
+                        <span>${ticket.orderId}</span>
+                    </div>
+                    <div style="white-space:pre-wrap; margin-bottom:10px;">${receiptText}</div>
+                    <div style="font-weight:bold; font-size:14px; color:#e74c3c; border-top:1px dashed #ddd; padding-top:10px;">
+                        Kekurangan: Rp ${safeRemaining.toLocaleString('id-ID')}
                     </div>
                     ${buttonsHtml}
                 </div>`;
-            } catch(innerErr) { console.error("Error ticket item", innerErr); }
-        });
-    } catch(err) { console.error("Critical renderActiveTickets", err); }
+            } catch(innerErr) { console.error("Error active ticket item", innerErr); } 
+        }); 
+    } catch(err) { console.error("Critical renderActiveTickets", err); } 
 };
 
-window.markTicketReady = function(orderId) { 
+window.markTicketReady = async function(orderId) { 
+    if (!navigator.onLine) return alert("⚠️ Anda harus terkoneksi internet untuk menandai pesanan selesai!");
+    
     if(confirm("Tandai pesanan ini selesai diproses dan siap diambil?")) { 
-        const ticket = activeLaundryTickets.find(t => t.orderId === orderId);
+        const ticket = window.activeLaundryTickets.find(t => t.orderId === orderId);
         if (ticket) { 
+            // 1. Ubah UI secara instan agar kasir tidak menunggu
             ticket.orderStatus = "Ready for Pickup"; 
-            ticket.syncStatus = "Pending"; 
-            
-            // Simpan perubahan ke memori lokal
-            db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket); 
-            
-            // Refresh tampilan tab Layanan Aktif
             window.renderActiveTickets();
             
-            // Dorong data ke Google Spreadsheet
-            window.runBackgroundSync(); 
+            try {
+                // 2. Tembak Quick-Update langsung ke Spreadsheet (Hanya update 1 cell)
+                let r = await fetch(API_URL, { 
+                    method: 'POST', mode: 'cors', 
+                    body: JSON.stringify({ action: "updateOrderStatus", orderId: orderId, status: "Ready for Pickup" }) 
+                });
+                
+                let res = await r.json();
+                if (res.status !== "Success") throw new Error(res.message);
+                
+                // 3. Simpan perubahan ke memori lokal jika sukses
+                db.transaction(["orders"], "readwrite").objectStore("orders").get(orderId).onsuccess = (e) => {
+                    let localOrder = e.target.result;
+                    if(localOrder) {
+                        localOrder.orderStatus = "Ready for Pickup";
+                        db.transaction(["orders"], "readwrite").objectStore("orders").put(localOrder);
+                    }
+                };
+            } catch(e) {
+                alert("⚠️ Gagal sinkronisasi ke server. Membatalkan status...");
+                // Rollback UI jika server gagal
+                ticket.orderStatus = "Processing";
+                window.renderActiveTickets();
+            }
         } 
     } 
 };
