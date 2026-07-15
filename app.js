@@ -141,7 +141,7 @@ window.printOrderStandard = function(orderId) {
     itemsHtml += `</table>`;
 
     let content = `
-        <div style="margin-bottom:8px; font-size:11px;">
+        <div style="margin-bottom:8px; font-size:11px; border-bottom:1px dashed #000; padding-bottom:6px;">
             <div style="display:flex; justify-content:space-between;"><b>Nota:</b> <span>${o.orderId}</span></div>
             <div style="display:flex; justify-content:space-between;"><b>Kamar:</b> <span>${o.roomNumber}</span></div>
             <div style="display:flex; justify-content:space-between;"><b>Kasir:</b> <span>${o.cashier}</span></div>
@@ -223,8 +223,8 @@ window.printShiftStandard = function(shiftId) {
     let content = `
         <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;"><b>Shift:</b> <span>${s.shiftId}</span></div>
         <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;"><b>Kasir:</b> <span>${s.cashier}</span></div>
-        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;"><b>Masuk:</b> <span>${formatTimeOnlyWIB(s.loginTime)}</span></div>
-        <div style="display:flex; justify-content:space-between; font-size:11px; border-bottom:1px solid #000; padding-bottom:5px; margin-bottom:5px;"><b>Keluar:</b> <span>${formatTimeOnlyWIB(s.logoutTime)}</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;"><b>Masuk:</b> <span>${formatWIB(s.loginTime)}</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; border-bottom:1px solid #000; padding-bottom:5px; margin-bottom:5px;"><b>Keluar:</b> <span>${formatWIB(s.logoutTime)}</span></div>
         <div style="font-weight:bold; font-size:12px; margin-top:5px; color:#2c3e50;">Rincian Item Terjual:</div>
         ${itemsHtml}
     `;
@@ -458,7 +458,11 @@ window.buildShiftReportReceipt = async function(data) {
     if(h2) r += CMD_CENTER + h2 + "\n";
     
     r += CMD_CENTER + "LAPORAN TUTUP SHIFT\n--------------------------------\n" + CMD_LEFT;
-    r += "ID Shift: " + data.shiftId + "\nKasir   : " + data.cashier + "\nMasuk   : " + formatTimeOnlyWIB(data.loginTime) + "\nKeluar  : " + formatTimeOnlyWIB(data.logoutTime) + "\n--------------------------------\n";
+    r += "ID Shift: " + data.shiftId + "\n";
+    r += "Kasir   : " + data.cashier + "\n";
+    r += "Masuk   : " + formatWIB(data.loginTime) + "\n";
+    r += "Keluar  : " + formatWIB(data.logoutTime) + "\n";
+    r += "--------------------------------\n";
     
     // Tambahan Rincian Item Terjual di Bluetooth
     r += CMD_BOLD_ON + "ITEM TERJUAL:" + CMD_BOLD_OFF + "\n";
@@ -1171,7 +1175,7 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
     if (shouldPrint) {
         if (window.currentPrintMode === 'desktop') {
             // Mode Print A4/Desktop (WiFi)
-            window.printOrderStandard(orderPayload.orderId);
+            window.Standard(orderPayload.orderId);
         } else {
             // Mode Print Bluetooth (Thermal)
             if (typeof window.buildEscPosReceipt === "function" && typeof btCharacteristic !== 'undefined' && btCharacteristic) {
@@ -1452,7 +1456,7 @@ window.renderHistoryList = function(type) {
                 <div style="display:flex; align-items:center; gap:8px;">${badge}
                     ${btnBatal}
                     <button onclick="viewOrderDetailsGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">👁️ Detail</button>
-                    <button onclick="printOrderGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
+                    <button onclick="Global('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
                 </div></div>`;
         });
         
