@@ -110,22 +110,33 @@ window.printOrderStandard = function(orderId) {
     let o = window.globalRecentOrders.find(x => x.orderId === orderId);
     if(!o) return;
     
-    // 🎨 HTML Table dengan Harga Mutlak di Kanan (white-space: nowrap)
+    // 🎨 SMART PARSER: Membaca teks mentah dari Spreadsheet dan memisahkannya!
     let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:8px; margin-bottom:8px;">`;
-    if (o.items && o.items.length > 0) {
-        o.items.forEach(i => {
-            let qty = i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty;
-            let priceToUse = Number(i.price) || Number(i.originalPrice) || 0; 
-            let lineTotal = (i.qty * priceToUse).toLocaleString('id-ID');
+    
+    if (o.readableReceipt) {
+        let lines = o.readableReceipt.split('\n');
+        lines.forEach(line => {
+            line = line.trim();
+            if (!line) return;
             
-            itemsHtml += `<tr>
-                <td style="padding:4px 0; border-bottom:1px dashed #ddd; width:15%; vertical-align:top;">${qty}x</td>
-                <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:left; vertical-align:top; padding-right:5px;">${i.name}</td>
-                <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:right; vertical-align:top; font-weight:bold; white-space:nowrap;">Rp ${lineTotal}</td>
-            </tr>`;
+            // Rumus untuk mendeteksi Qty, Nama Barang, dan Harga
+            let match = line.match(/(?:•|-|\*)?\s*([\d.]+)x\s+(.*?)\s*(?:\[[LH]\])?\s*\((Rp\s*[\d.,]+)\)/i);
+            
+            if (match) {
+                let qty = match[1];
+                let name = match[2].trim();
+                let price = match[3]; // Harga yang sudah diekstrak
+                
+                itemsHtml += `<tr>
+                    <td style="padding:4px 0; border-bottom:1px dashed #ddd; width:15%; vertical-align:top;">${qty}x</td>
+                    <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:left; vertical-align:top; padding-right:5px;">${name}</td>
+                    <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:right; vertical-align:top; font-weight:bold; white-space:nowrap;">${price}</td>
+                </tr>`;
+            } else {
+                // Fallback jika baris teks tidak standar
+                itemsHtml += `<tr><td colspan="3" style="padding:4px 0; border-bottom:1px dashed #ddd;">${line}</td></tr>`;
+            }
         });
-    } else {
-        itemsHtml += `<tr><td style="padding:4px 0;">${o.readableReceipt.replace(/\n/g, '<br>')}</td></tr>`;
     }
     itemsHtml += `</table>`;
 
@@ -383,17 +394,37 @@ window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, p
     receipt += "--------------------------------\n" + CMD_LEFT;
     receipt += "Nota: " + orderId + "\nKamar: " + order.roomNumber + "\nKsr : " + order.cashier + "\n--------------------------------\n";
 
-    // Di dalam window.buildEscPosReceipt
-    order.items.forEach(item => {
-        const qtyDisplay = item.qty % 1 !== 0 ? item.qty.toFixed(2) : item.qty;
-        let priceToUse = Number(item.price) || Number(item.originalPrice) || 0;
-        const lineTotal = (item.qty * priceToUse).toLocaleString('id-ID'); 
-        
-        // Baris 1: Nama Item
-        receipt += `${item.name.substring(0,32)}\n`;
-        // Baris 2: Qty di kiri (dengan indentasi), Harga total rata di kanan mutlak
-        receipt += formatEscPosLine(`  ${qtyDisplay}x`, `Rp ${lineTotal}`, false) + "\n";
-    });
+    // Ganti bagian order.items.forEach dengan ini:
+    if (order.items && order.items.length > 0) {
+        // Transaksi Baru (Dari Memori)
+        order.items.forEach(item => {
+            const qtyDisplay = item.qty % 1 !== 0 ? item.qty.toFixed(2) : item.qty;
+            let priceToUse = Number(item.price) || Number(item.originalPrice) || 0;
+            const lineTotal = (item.qty * priceToUse).toLocaleString('id-ID'); 
+            
+            receipt += `${item.name.substring(0,32)}\n`;
+            receipt += formatEscPosLine(`  ${qtyDisplay}x`, `Rp ${lineTotal}`, false) + "\n";
+        });
+    } else if (order.readableReceipt) {
+        // Transaksi Sejarah (Dari Spreadsheet)
+        let lines = order.readableReceipt.split('\n');
+        lines.forEach(line => {
+            line = line.trim();
+            if (!line) return;
+            
+            let match = line.match(/(?:•|-|\*)?\s*([\d.]+)x\s+(.*?)\s*(?:\[[LH]\])?\s*\((Rp\s*[\d.,]+)\)/i);
+            if (match) {
+                let qty = match[1];
+                let name = match[2].trim();
+                let price = match[3];
+                
+                receipt += `${name.substring(0,32)}\n`;
+                receipt += formatEscPosLine(`  ${qty}x`, price, false) + "\n";
+            } else {
+                receipt += `${line.substring(0,32)}\n`;
+            }
+        });
+    }
 
     receipt += "--------------------------------\n";
     receipt += formatEscPosLine("Subtotal", order.subtotal.toLocaleString('id-ID'), false) + "\n";
