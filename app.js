@@ -112,29 +112,38 @@ window.printOrderStandard = function(orderId) {
     
     let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:8px; margin-bottom:8px;">`;
     
-    if (o.readableReceipt) {
+    // ✅ KONDISI 1: JIKA INI TRANSAKSI BARU (Membaca Array Memori Langsung)
+    if (o.items && o.items.length > 0) {
+        o.items.forEach(i => {
+            let qty = i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty;
+            let priceToUse = Number(i.price) || Number(i.originalPrice) || 0; 
+            let lineTotal = (i.qty * priceToUse).toLocaleString('id-ID');
+            
+            itemsHtml += `<tr>
+                <td style="padding:4px 0; border-bottom:1px dashed #ddd; width:15%; vertical-align:top;">${qty}x</td>
+                <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:left; vertical-align:top; padding-right:5px;">${i.name}</td>
+                <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:right; vertical-align:top; font-weight:bold; white-space:nowrap;">Rp ${lineTotal}</td>
+            </tr>`;
+        });
+    } 
+    // ✅ KONDISI 2: JIKA INI SEJARAH LAMA (Membaca String Mentah Spreadsheet)
+    else if (o.readableReceipt) {
         let lines = o.readableReceipt.split('\n');
         lines.forEach(line => {
             line = line.trim();
             if (!line) return;
             
             let qty = ""; let name = line; let price = "";
-            
-            // 1. Ekstrak Qty (Cari angka + "x" di depan)
             let qtyMatch = name.match(/^(?:[\u2022\-\*]\s*)?([\d.,]+)x\s+/i);
             if (qtyMatch) {
                 qty = qtyMatch[1] + "x";
-                name = name.substring(qtyMatch[0].length); // Potong qty dari nama
+                name = name.substring(qtyMatch[0].length); 
             }
-            
-            // 2. Ekstrak Harga (Cari "Rp" terakhir di kalimat)
             let lastRpIndex = name.lastIndexOf("Rp");
             if (lastRpIndex !== -1) {
-                price = name.substring(lastRpIndex).replace(/\)/g, '').trim(); // Ambil dari Rp ke kanan
-                name = name.substring(0, lastRpIndex).replace(/\($/, '').replace(/\[[LH]\]/g, '').trim(); // Bersihkan sisa simbol
+                price = name.substring(lastRpIndex).replace(/\)/g, '').trim(); 
+                name = name.substring(0, lastRpIndex).replace(/\($/, '').replace(/\[[LH]\]/g, '').trim(); 
             }
-            
-            // Jika berhasil menemukan keduanya, paksa ke kanan mutlak
             if (qty && price) {
                 itemsHtml += `<tr>
                     <td style="padding:4px 0; border-bottom:1px dashed #ddd; width:15%; vertical-align:top;">${qty}</td>
@@ -142,7 +151,6 @@ window.printOrderStandard = function(orderId) {
                     <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:right; vertical-align:top; font-weight:bold; white-space:nowrap;">${price}</td>
                 </tr>`;
             } else {
-                // Baris normal tanpa format harga
                 itemsHtml += `<tr><td colspan="3" style="padding:4px 0; border-bottom:1px dashed #ddd;">${line}</td></tr>`;
             }
         });
@@ -536,15 +544,21 @@ window.printSettlement = async function() {
     if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
     let ticket = window.activeSettlementTicket;
     
-    // 1. Hitung Pembayaran
+    // 🛡️ SAFETY NET: Jika string nota kosong, buat dari array sebelum upload!
+    if (!ticket.readableReceipt && ticket.items && ticket.items.length > 0) {
+        ticket.readableReceipt = ticket.items.map(i => {
+            let qty = i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty;
+            let priceToUse = Number(i.price) || Number(i.originalPrice) || 0;
+            return `${qty}x ${i.name} (Rp ${(i.qty * priceToUse).toLocaleString('id-ID')})`;
+        }).join('\n');
+    }
+
     let cashL = Number(document.getElementById("settle-cash-laundry")?.value || document.getElementById("settlement-cash-laundry")?.value || 0);
     let cashH = Number(document.getElementById("settle-cash-hotel")?.value || document.getElementById("settlement-cash-hotel")?.value || 0);
     let qris = Number(document.getElementById("settle-qris")?.value || document.getElementById("settlement-qris")?.value || 0);
     let trf = Number(document.getElementById("settle-transfer")?.value || document.getElementById("settlement-transfer")?.value || 0);
     
-    if (cashL === 0 && cashH === 0) {
-         cashL = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
-    }
+    if (cashL === 0 && cashH === 0) cashL = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
 
     ticket.cashLaundryAmount = (Number(ticket.cashLaundryAmount)||0) + cashL;
     ticket.cashHotelAmount = (Number(ticket.cashHotelAmount)||0) + cashH;
@@ -553,58 +567,51 @@ window.printSettlement = async function() {
     
     let allPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0);
 
-    // 2. Jika Lunas, hapus instan dari antarmuka agar tidak nyangkut!
     if (allPaid >= ticket.grandTotal) {
         ticket.orderStatus = "Completed";
-        // Filter membuang tiket ini dari memori layar aktif
         window.activeLaundryTickets = window.activeLaundryTickets.filter(t => t.orderId !== ticket.orderId);
     }
     ticket.syncStatus = "Pending";
-
-    // Simpan ke database lokal
     db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
 
-    // 3. Berikan Alert
     alert("Order is confirmed and print");
 
-    // Tutup Modal
     let mod = document.getElementById("settlement-modal") || document.getElementById("rincian-pembayaran-modal");
     if(mod) mod.classList.add("hidden");
 
-    // Refresh UI secara instan (tiket akan otomatis menghilang dari layar)
     if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
     if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
     
-    // 4. Tembak HANYA Kolom G ke Spreadsheet (Kolom H dibiarkan utuh)
     fetch(API_URL, { 
         method: 'POST', mode: 'cors', 
         body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed" }) 
     });
 
-    // Jalankan sync uang di background
     window.runBackgroundSync();
-
-    // 5. Cetak dan kembali ke Home
     await window.printOrderGlobal(ticket.orderId);
 
-    setTimeout(() => {
-        if (typeof window.switchTab === 'function') window.switchTab('pos');
-    }, 300);
+    setTimeout(() => { if (typeof window.switchTab === 'function') window.switchTab('pos'); }, 300);
 };
 
 window.submitSettlement = async function() {
     if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
     let ticket = window.activeSettlementTicket;
     
-    // 1. Hitung Pembayaran
+    // 🛡️ SAFETY NET: Jika string nota kosong, buat dari array sebelum upload!
+    if (!ticket.readableReceipt && ticket.items && ticket.items.length > 0) {
+        ticket.readableReceipt = ticket.items.map(i => {
+            let qty = i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty;
+            let priceToUse = Number(i.price) || Number(i.originalPrice) || 0;
+            return `${qty}x ${i.name} (Rp ${(i.qty * priceToUse).toLocaleString('id-ID')})`;
+        }).join('\n');
+    }
+    
     let cashL = Number(document.getElementById("settle-cash-laundry")?.value || document.getElementById("settlement-cash-laundry")?.value || 0);
     let cashH = Number(document.getElementById("settle-cash-hotel")?.value || document.getElementById("settlement-cash-hotel")?.value || 0);
     let qris = Number(document.getElementById("settle-qris")?.value || document.getElementById("settlement-qris")?.value || 0);
     let trf = Number(document.getElementById("settle-transfer")?.value || document.getElementById("settlement-transfer")?.value || 0);
     
-    if (cashL === 0 && cashH === 0) {
-         cashL = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
-    }
+    if (cashL === 0 && cashH === 0) cashL = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
 
     let totalPay = cashL + cashH + qris + trf;
     if (totalPay <= 0) return alert("⚠️ Silakan masukkan nominal pembayaran pelunasan.");
@@ -616,36 +623,27 @@ window.submitSettlement = async function() {
     
     let allPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0);
 
-    // 2. Jika Lunas, hapus instan dari antarmuka agar tidak nyangkut!
     if (allPaid >= ticket.grandTotal) {
         ticket.orderStatus = "Completed";
-        // Filter membuang tiket ini dari memori layar aktif
         window.activeLaundryTickets = window.activeLaundryTickets.filter(t => t.orderId !== ticket.orderId);
     }
     ticket.syncStatus = "Pending";
-
     db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
 
-    // 3. Berikan Alert
     alert("Order is recorded");
     
-    // Tutup Modal
     let mod = document.getElementById("settlement-modal") || document.getElementById("rincian-pembayaran-modal");
     if(mod) mod.classList.add("hidden");
 
-    // Refresh UI secara instan
     if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
     if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
     
-    // 4. Tembak HANYA Kolom G ke Spreadsheet (Kolom H dibiarkan utuh)
     fetch(API_URL, { 
         method: 'POST', mode: 'cors', 
         body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed" }) 
     });
 
     window.runBackgroundSync();
-    
-    // 5. Kembali ke Home
     if (typeof window.switchTab === 'function') window.switchTab('pos');
 };
 
@@ -1396,31 +1394,23 @@ window.markTicketReady = async function(orderId) {
     if(confirm("Tandai pesanan ini selesai diproses dan siap diambil?")) { 
         const ticket = window.activeLaundryTickets.find(t => t.orderId === orderId);
         if (ticket) { 
-            // 1. Ubah UI secara instan agar kasir tidak menunggu
+            // 1. Ubah UI Instan & Simpan Lokal
             ticket.orderStatus = "Ready for Pickup"; 
+            ticket.syncStatus = "Pending";
             window.renderActiveTickets();
+            db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
             
             try {
-                // 2. Tembak Quick-Update langsung ke Spreadsheet (Hanya update 1 cell)
-                let r = await fetch(API_URL, { 
+                // 2. AWAIT: Tunggu sampai Google benar-benar selesai menyimpan
+                await fetch(API_URL, { 
                     method: 'POST', mode: 'cors', 
                     body: JSON.stringify({ action: "updateOrderStatus", orderId: orderId, status: "Ready for Pickup" }) 
                 });
                 
-                let res = await r.json();
-                if (res.status !== "Success") throw new Error(res.message);
-                
-                // 3. Simpan perubahan ke memori lokal jika sukses
-                db.transaction(["orders"], "readwrite").objectStore("orders").get(orderId).onsuccess = (e) => {
-                    let localOrder = e.target.result;
-                    if(localOrder) {
-                        localOrder.orderStatus = "Ready for Pickup";
-                        db.transaction(["orders"], "readwrite").objectStore("orders").put(localOrder);
-                    }
-                };
+                // 3. BARU jalankan background sync agar tidak menimpa dengan data lama
+                window.runBackgroundSync();
             } catch(e) {
                 alert("⚠️ Gagal sinkronisasi ke server. Membatalkan status...");
-                // Rollback UI jika server gagal
                 ticket.orderStatus = "Processing";
                 window.renderActiveTickets();
             }
