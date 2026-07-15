@@ -110,7 +110,6 @@ window.printOrderStandard = function(orderId) {
     let o = window.globalRecentOrders.find(x => x.orderId === orderId);
     if(!o) return;
     
-    // 🎨 SMART PARSER: Membaca teks mentah dari Spreadsheet dan memisahkannya!
     let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:8px; margin-bottom:8px;">`;
     
     if (o.readableReceipt) {
@@ -119,21 +118,31 @@ window.printOrderStandard = function(orderId) {
             line = line.trim();
             if (!line) return;
             
-            // Rumus untuk mendeteksi Qty, Nama Barang, dan Harga
-            let match = line.match(/(?:•|-|\*)?\s*([\d.]+)x\s+(.*?)\s*(?:\[[LH]\])?\s*\((Rp\s*[\d.,]+)\)/i);
+            let qty = ""; let name = line; let price = "";
             
-            if (match) {
-                let qty = match[1];
-                let name = match[2].trim();
-                let price = match[3]; // Harga yang sudah diekstrak
-                
+            // 1. Ekstrak Qty (Cari angka + "x" di depan)
+            let qtyMatch = name.match(/^(?:[\u2022\-\*]\s*)?([\d.,]+)x\s+/i);
+            if (qtyMatch) {
+                qty = qtyMatch[1] + "x";
+                name = name.substring(qtyMatch[0].length); // Potong qty dari nama
+            }
+            
+            // 2. Ekstrak Harga (Cari "Rp" terakhir di kalimat)
+            let lastRpIndex = name.lastIndexOf("Rp");
+            if (lastRpIndex !== -1) {
+                price = name.substring(lastRpIndex).replace(/\)/g, '').trim(); // Ambil dari Rp ke kanan
+                name = name.substring(0, lastRpIndex).replace(/\($/, '').replace(/\[[LH]\]/g, '').trim(); // Bersihkan sisa simbol
+            }
+            
+            // Jika berhasil menemukan keduanya, paksa ke kanan mutlak
+            if (qty && price) {
                 itemsHtml += `<tr>
-                    <td style="padding:4px 0; border-bottom:1px dashed #ddd; width:15%; vertical-align:top;">${qty}x</td>
+                    <td style="padding:4px 0; border-bottom:1px dashed #ddd; width:15%; vertical-align:top;">${qty}</td>
                     <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:left; vertical-align:top; padding-right:5px;">${name}</td>
                     <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:right; vertical-align:top; font-weight:bold; white-space:nowrap;">${price}</td>
                 </tr>`;
             } else {
-                // Fallback jika baris teks tidak standar
+                // Baris normal tanpa format harga
                 itemsHtml += `<tr><td colspan="3" style="padding:4px 0; border-bottom:1px dashed #ddd;">${line}</td></tr>`;
             }
         });
@@ -412,14 +421,22 @@ window.buildEscPosReceipt = async function(orderId, order, deposit, remaining, p
             line = line.trim();
             if (!line) return;
             
-            let match = line.match(/(?:•|-|\*)?\s*([\d.]+)x\s+(.*?)\s*(?:\[[LH]\])?\s*\((Rp\s*[\d.,]+)\)/i);
-            if (match) {
-                let qty = match[1];
-                let name = match[2].trim();
-                let price = match[3];
-                
+            let qty = ""; let name = line; let price = "";
+            let qtyMatch = name.match(/^(?:[\u2022\-\*]\s*)?([\d.,]+)x\s+/i);
+            if (qtyMatch) {
+                qty = qtyMatch[1] + "x";
+                name = name.substring(qtyMatch[0].length);
+            }
+            
+            let lastRpIndex = name.lastIndexOf("Rp");
+            if (lastRpIndex !== -1) {
+                price = name.substring(lastRpIndex).replace(/\)/g, '').trim();
+                name = name.substring(0, lastRpIndex).replace(/\($/, '').replace(/\[[LH]\]/g, '').trim();
+            }
+            
+            if (qty && price) {
                 receipt += `${name.substring(0,32)}\n`;
-                receipt += formatEscPosLine(`  ${qty}x`, price, false) + "\n";
+                receipt += formatEscPosLine(`  ${qty}`, price, false) + "\n";
             } else {
                 receipt += `${line.substring(0,32)}\n`;
             }
@@ -505,6 +522,66 @@ window.buildShiftReportReceipt = async function(data) {
     
     r += "\n\n\n\n" + CMD_CUT;
     const encoder = new TextEncoder(); await sendToPrinter(encoder.encode(r));
+};
+
+// ==========================================
+// FIX: SETTLEMENT / PELUNASAN MODAL
+// ==========================================
+
+window.printSettlement = function() {
+    if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
+    
+    // Kirim langsung ke Global Router (yang akan memilih A4 atau Bluetooth)
+    window.printOrderGlobal(window.activeSettlementTicket.orderId);
+};
+
+window.submitSettlement = async function() {
+    if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
+    let ticket = window.activeSettlementTicket;
+    
+    // Pencarian ID Input Cerdas (Mendukung berbagai penamaan HTML)
+    let cashL = Number(document.getElementById("settle-cash-laundry")?.value || document.getElementById("settlement-cash-laundry")?.value || 0);
+    let cashH = Number(document.getElementById("settle-cash-hotel")?.value || document.getElementById("settlement-cash-hotel")?.value || 0);
+    let qris = Number(document.getElementById("settle-qris")?.value || document.getElementById("settlement-qris")?.value || 0);
+    let trf = Number(document.getElementById("settle-transfer")?.value || document.getElementById("settlement-transfer")?.value || 0);
+    
+    // Fallback jika HTML hanya menggunakan 1 box "Cash"
+    if (cashL === 0 && cashH === 0) {
+         let genericCash = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
+         cashL = genericCash; 
+    }
+
+    let totalPay = cashL + cashH + qris + trf;
+    if (totalPay <= 0) return alert("⚠️ Silakan masukkan nominal pembayaran pelunasan.");
+
+    // Update Angka
+    ticket.cashLaundryAmount = (Number(ticket.cashLaundryAmount)||0) + cashL;
+    ticket.cashHotelAmount = (Number(ticket.cashHotelAmount)||0) + cashH;
+    ticket.qrisAmount = (Number(ticket.qrisAmount)||0) + qris;
+    ticket.transferAmount = (Number(ticket.transferAmount)||0) + trf;
+    
+    let allPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0);
+
+    // Tandai selesai jika lunas
+    if (allPaid >= ticket.grandTotal) {
+        ticket.orderStatus = "Completed";
+    }
+    ticket.syncStatus = "Pending";
+
+    // Simpan ke database lokal
+    db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
+
+    // Tutup Modal
+    let mod = document.getElementById("settlement-modal") || document.getElementById("rincian-pembayaran-modal");
+    if(mod) mod.classList.add("hidden");
+
+    // 🎇 Beri Feedback Popup
+    alert("✅ Pembayaran Pelunasan Berhasil Disimpan!");
+    
+    // Refresh Layar
+    if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
+    if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
+    window.runBackgroundSync();
 };
 
 window.updateTabLabels = function() {
