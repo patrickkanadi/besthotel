@@ -528,33 +528,24 @@ window.buildShiftReportReceipt = async function(data) {
 // FIX: SETTLEMENT / PELUNASAN MODAL
 // ==========================================
 
-window.printSettlement = function() {
-    if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
-    
-    // Kirim langsung ke Global Router (yang akan memilih A4 atau Bluetooth)
-    window.printOrderGlobal(window.activeSettlementTicket.orderId);
-};
+window.// ==========================================
+// FIX: SETTLEMENT / PELUNASAN MODAL FLOW
+// ==========================================
 
-window.submitSettlement = async function() {
+window.printSettlement = async function() {
     if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
     let ticket = window.activeSettlementTicket;
     
-    // Pencarian ID Input Cerdas (Mendukung berbagai penamaan HTML)
+    // 1. Simpan Pembayaran Terlebih Dahulu
     let cashL = Number(document.getElementById("settle-cash-laundry")?.value || document.getElementById("settlement-cash-laundry")?.value || 0);
     let cashH = Number(document.getElementById("settle-cash-hotel")?.value || document.getElementById("settlement-cash-hotel")?.value || 0);
     let qris = Number(document.getElementById("settle-qris")?.value || document.getElementById("settlement-qris")?.value || 0);
     let trf = Number(document.getElementById("settle-transfer")?.value || document.getElementById("settlement-transfer")?.value || 0);
     
-    // Fallback jika HTML hanya menggunakan 1 box "Cash"
     if (cashL === 0 && cashH === 0) {
-         let genericCash = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
-         cashL = genericCash; 
+         cashL = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
     }
 
-    let totalPay = cashL + cashH + qris + trf;
-    if (totalPay <= 0) return alert("⚠️ Silakan masukkan nominal pembayaran pelunasan.");
-
-    // Update Angka
     ticket.cashLaundryAmount = (Number(ticket.cashLaundryAmount)||0) + cashL;
     ticket.cashHotelAmount = (Number(ticket.cashHotelAmount)||0) + cashH;
     ticket.qrisAmount = (Number(ticket.qrisAmount)||0) + qris;
@@ -562,26 +553,76 @@ window.submitSettlement = async function() {
     
     let allPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0);
 
-    // Tandai selesai jika lunas
-    if (allPaid >= ticket.grandTotal) {
-        ticket.orderStatus = "Completed";
-    }
+    if (allPaid >= ticket.grandTotal) ticket.orderStatus = "Completed";
     ticket.syncStatus = "Pending";
 
-    // Simpan ke database lokal
     db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
 
-    // Tutup Modal
+    // 2. Feedback sesuai request
+    alert("Order is confirmed and print");
+
+    // 3. Tutup Modal
     let mod = document.getElementById("settlement-modal") || document.getElementById("rincian-pembayaran-modal");
     if(mod) mod.classList.add("hidden");
 
-    // 🎇 Beri Feedback Popup
-    alert("✅ Pembayaran Pelunasan Berhasil Disimpan!");
-    
-    // Refresh Layar
     if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
     if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
     window.runBackgroundSync();
+
+    // 4. Proses Cetak
+    await window.printOrderGlobal(ticket.orderId);
+
+    // 5. Kembali ke Home (POS)
+    // Diberi jeda 300ms agar dialog print A4 sempat terbuka dengan sempurna
+    setTimeout(() => {
+        if (typeof window.switchTab === 'function') window.switchTab('pos');
+    }, 300);
+};
+
+window.submitSettlement = async function() {
+    if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
+    let ticket = window.activeSettlementTicket;
+    
+    // 1. Ambil Data Pembayaran
+    let cashL = Number(document.getElementById("settle-cash-laundry")?.value || document.getElementById("settlement-cash-laundry")?.value || 0);
+    let cashH = Number(document.getElementById("settle-cash-hotel")?.value || document.getElementById("settlement-cash-hotel")?.value || 0);
+    let qris = Number(document.getElementById("settle-qris")?.value || document.getElementById("settlement-qris")?.value || 0);
+    let trf = Number(document.getElementById("settle-transfer")?.value || document.getElementById("settlement-transfer")?.value || 0);
+    
+    if (cashL === 0 && cashH === 0) {
+         cashL = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
+    }
+
+    let totalPay = cashL + cashH + qris + trf;
+    if (totalPay <= 0) return alert("⚠️ Silakan masukkan nominal pembayaran pelunasan.");
+
+    // 2. Update Angka
+    ticket.cashLaundryAmount = (Number(ticket.cashLaundryAmount)||0) + cashL;
+    ticket.cashHotelAmount = (Number(ticket.cashHotelAmount)||0) + cashH;
+    ticket.qrisAmount = (Number(ticket.qrisAmount)||0) + qris;
+    ticket.transferAmount = (Number(ticket.transferAmount)||0) + trf;
+    
+    let allPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0);
+
+    if (allPaid >= ticket.grandTotal) ticket.orderStatus = "Completed";
+    ticket.syncStatus = "Pending";
+
+    // 3. Simpan ke database lokal
+    db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
+
+    // 4. Feedback sesuai request
+    alert("Order is recorded");
+    
+    // 5. Tutup Modal
+    let mod = document.getElementById("settlement-modal") || document.getElementById("rincian-pembayaran-modal");
+    if(mod) mod.classList.add("hidden");
+
+    // 6. Refresh state & kembali ke Home (POS)
+    if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
+    if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
+    window.runBackgroundSync();
+    
+    if (typeof window.switchTab === 'function') window.switchTab('pos');
 };
 
 window.updateTabLabels = function() {
