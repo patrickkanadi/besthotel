@@ -544,7 +544,7 @@ window.printSettlement = async function() {
     if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
     let ticket = window.activeSettlementTicket;
     
-    // 🛡️ SAFETY NET: Jika string nota kosong, buat dari array sebelum upload!
+    // Safety Net: Bangun teks nota jika belum ada
     if (!ticket.readableReceipt && ticket.items && ticket.items.length > 0) {
         ticket.readableReceipt = ticket.items.map(i => {
             let qty = i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty;
@@ -569,6 +569,7 @@ window.printSettlement = async function() {
 
     if (allPaid >= ticket.grandTotal) {
         ticket.orderStatus = "Completed";
+        // Instan hapus dari memori UI agar layar langsung bersih
         window.activeLaundryTickets = window.activeLaundryTickets.filter(t => t.orderId !== ticket.orderId);
     }
     ticket.syncStatus = "Pending";
@@ -582,22 +583,24 @@ window.printSettlement = async function() {
     if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
     if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
     
+    // Tembak Quick Update di background dengan menyertakan Nota untuk Kolom H
     fetch(API_URL, { 
         method: 'POST', mode: 'cors', 
-        body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed" }) 
-    });
+        body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed", readableReceipt: ticket.readableReceipt }) 
+    }).catch(e => console.log(e));
 
-    window.runBackgroundSync();
+    // Jeda 3 detik sebelum background sync besar
+    setTimeout(() => { if (typeof window.runBackgroundSync === 'function') window.runBackgroundSync(); }, 3000);
+    
     await window.printOrderGlobal(ticket.orderId);
-
     setTimeout(() => { if (typeof window.switchTab === 'function') window.switchTab('pos'); }, 300);
 };
 
-window.submitSettlement = async function() {
+window.submitSettlement = function() {
     if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
     let ticket = window.activeSettlementTicket;
     
-    // 🛡️ SAFETY NET: Jika string nota kosong, buat dari array sebelum upload!
+    // Safety Net: Bangun teks nota jika belum ada
     if (!ticket.readableReceipt && ticket.items && ticket.items.length > 0) {
         ticket.readableReceipt = ticket.items.map(i => {
             let qty = i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty;
@@ -625,6 +628,7 @@ window.submitSettlement = async function() {
 
     if (allPaid >= ticket.grandTotal) {
         ticket.orderStatus = "Completed";
+        // Instan hapus dari memori UI agar layar langsung bersih
         window.activeLaundryTickets = window.activeLaundryTickets.filter(t => t.orderId !== ticket.orderId);
     }
     ticket.syncStatus = "Pending";
@@ -638,12 +642,15 @@ window.submitSettlement = async function() {
     if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
     if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
     
+    // Tembak Quick Update di background dengan menyertakan Nota untuk Kolom H
     fetch(API_URL, { 
         method: 'POST', mode: 'cors', 
-        body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed" }) 
-    });
+        body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed", readableReceipt: ticket.readableReceipt }) 
+    }).catch(e => console.log(e));
 
-    window.runBackgroundSync();
+    // Jeda 3 detik sebelum background sync besar
+    setTimeout(() => { if (typeof window.runBackgroundSync === 'function') window.runBackgroundSync(); }, 3000);
+    
     if (typeof window.switchTab === 'function') window.switchTab('pos');
 };
 
@@ -1388,32 +1395,30 @@ window.renderActiveTickets = function() {
     } catch(err) { console.error("Critical renderActiveTickets", err); } 
 };
 
-window.markTicketReady = async function(orderId) { 
+window.markTicketReady = function(orderId) { 
     if (!navigator.onLine) return alert("⚠️ Anda harus terkoneksi internet untuk menandai pesanan selesai!");
     
     if(confirm("Tandai pesanan ini selesai diproses dan siap diambil?")) { 
         const ticket = window.activeLaundryTickets.find(t => t.orderId === orderId);
         if (ticket) { 
-            // 1. Ubah UI Instan & Simpan Lokal
+            // 1. UI INSTANT REFRESH (Tanpa Await agar tidak stuck/lemot)
             ticket.orderStatus = "Ready for Pickup"; 
             ticket.syncStatus = "Pending";
             window.renderActiveTickets();
+            
+            // 2. Simpan ke database lokal
             db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
             
-            try {
-                // 2. AWAIT: Tunggu sampai Google benar-benar selesai menyimpan
-                await fetch(API_URL, { 
-                    method: 'POST', mode: 'cors', 
-                    body: JSON.stringify({ action: "updateOrderStatus", orderId: orderId, status: "Ready for Pickup" }) 
-                });
-                
-                // 3. BARU jalankan background sync agar tidak menimpa dengan data lama
-                window.runBackgroundSync();
-            } catch(e) {
-                alert("⚠️ Gagal sinkronisasi ke server. Membatalkan status...");
-                ticket.orderStatus = "Processing";
-                window.renderActiveTickets();
-            }
+            // 3. Tembak ke server di background ("Fire and Forget")
+            fetch(API_URL, { 
+                method: 'POST', mode: 'cors', 
+                body: JSON.stringify({ action: "updateOrderStatus", orderId: orderId, status: "Ready for Pickup" }) 
+            }).catch(e => console.log("Quick update failed", e));
+            
+            // 4. Jeda 3 detik sebelum sync besar agar UI tidak mantul
+            setTimeout(() => {
+                if (typeof window.runBackgroundSync === 'function') window.runBackgroundSync();
+            }, 3000);
         } 
     } 
 };
