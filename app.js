@@ -1250,15 +1250,23 @@ window.renderActiveTickets = function() {
     } catch(err) { console.error("Critical renderActiveTickets", err); }
 };
 
-window.markTicketReady = function(orderId) {
-    if(confirm("Tandai pesanan ini selesai diproses dan siap diambil?")) {
+window.markTicketReady = function(orderId) { 
+    if(confirm("Tandai pesanan ini selesai diproses dan siap diambil?")) { 
         const ticket = activeLaundryTickets.find(t => t.orderId === orderId);
-        if (ticket) {
-            ticket.orderStatus = "Ready for Pickup"; ticket.syncStatus = "Pending";
-            db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
-            window.renderActiveTickets(); window.runBackgroundSync();
-        }
-    }
+        if (ticket) { 
+            ticket.orderStatus = "Ready for Pickup"; 
+            ticket.syncStatus = "Pending"; 
+            
+            // Simpan perubahan ke memori lokal
+            db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket); 
+            
+            // Refresh tampilan tab Layanan Aktif
+            window.renderActiveTickets();
+            
+            // Dorong data ke Google Spreadsheet
+            window.runBackgroundSync(); 
+        } 
+    } 
 };
 
 window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) {
