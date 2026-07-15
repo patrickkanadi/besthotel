@@ -1308,46 +1308,40 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
     };
 
     // 3. Simpan ke Database Lokal & Memori
+    // 1. Simpan ke database lokal
     db.transaction(["orders"], "readwrite").objectStore("orders").add(orderPayload);
-    window.globalRecentOrders.unshift(orderPayload);
-    
-    if (finalStatus === "Processing") {
+
+    // 2. Langsung tampilkan di tab "Cucian Aktif" jika status Processing
+    if (finalStatus === "Processing" || finalStatus === "Pending Debt") { 
+        if (!window.activeLaundryTickets) window.activeLaundryTickets = [];
         window.activeLaundryTickets.push(orderPayload);
+        let tc = document.getElementById("ticket-count"); 
+        if(tc) tc.innerText = window.activeLaundryTickets.length;
     }
     
-    if (Math.round(window.cartGrandTotal) > Math.round(totalPaid)) {
-        window.globalUnpaidOrders.unshift(orderPayload); 
+    // 3. ✅ MUTLAK: Masukkan pesanan baru ke memori Riwayat Global 
+    // agar fungsi A4 Print bisa menemukannya secara instan!
+    if (!window.globalRecentOrders) window.globalRecentOrders = [];
+    window.globalRecentOrders.unshift(orderPayload);
+
+    // 4. ✅ ALERTS & PRINTING MENGGUNAKAN GLOBAL ROUTER (A4 / BLUETOOTH)
+    if (shouldPrint) { 
+        alert("Order is confirmed and print");
+        await window.printOrderGlobal(orderPayload.orderId);
+    } else {
+        alert("Order is recorded");
     }
 
-    // 4. PRINTING ROUTER (GLOBAL TOGGLE)
-    if (shouldPrint) {
-        if (window.currentPrintMode === 'desktop') {
-            // Mode Print A4/Desktop (WiFi)
-            window.Standard(orderPayload.orderId);
-        } else {
-            // Mode Print Bluetooth (Thermal)
-            if (typeof window.buildEscPosReceipt === "function" && typeof btCharacteristic !== 'undefined' && btCharacteristic) {
-                await window.buildEscPosReceipt(orderPayload.orderId, orderPayload, totalPaid, window.cartGrandTotal - totalPaid, "Split");
-            } else {
-                alert("⚠️ Printer Bluetooth belum terhubung! Transaksi tetap tersimpan di sistem.");
-            }
-        }
-    }
-    
-    // 5. Bersihkan UI & Sync
+    // 5. Tutup modal dan reset layar kasir
     let mod = document.getElementById("review-modal"); 
     if(mod) mod.classList.add("hidden");
     
-    if (typeof window.showToast === 'function') window.showToast("✅ Order berhasil disimpan!");
-    
     window.lockMenu(); 
-    window.renderProductGrid(); 
-    window.extractUnpaidOrders(); 
+    if (typeof renderProductGrid === 'function') renderProductGrid(); 
     
-    let tc = document.getElementById("ticket-count"); 
-    if(tc) tc.innerText = window.activeLaundryTickets.length;
-    
-    window.runBackgroundSync();
+    // Tarik background sync dan segarkan UI Unpaid
+    if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
+    window.runBackgroundSync(); 
 };
 
 window.renderActiveTickets = function() { 
