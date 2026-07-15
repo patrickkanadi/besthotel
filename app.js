@@ -566,22 +566,25 @@ window.showToast = function(message, isError = false) {
     setTimeout(() => { toast.style.opacity = "0"; }, 3000);
 };
 
-window.printOrderGlobal = function(orderId) {
+window.printOrderGlobal = async function(orderId) {
+    // 1. Cek Dropdown: Jika Mode A4, arahkan ke fungsi A4
     if (window.currentPrintMode === 'desktop') {
         window.printOrderStandard(orderId);
-        return;
+    } 
+    // 2. Jika Mode Bluetooth, arahkan ke Bluetooth
+    else {
+        let o = window.globalRecentOrders.find(x => x.orderId === orderId);
+        if(!o) return alert("Data order tidak ditemukan di sistem.");
+        
+        if (typeof btCharacteristic !== 'undefined' && btCharacteristic) {
+            let totalPaid = (Number(o.cashLaundryAmount)||0) + (Number(o.cashHotelAmount)||0) + (Number(o.qrisAmount)||0) + (Number(o.transferAmount)||0);
+            let remaining = o.grandTotal - totalPaid;
+            // Gunakan format struk rapi yang baru kita buat
+            await window.buildEscPosReceipt(o.orderId, o, totalPaid, remaining, o.paymentMethod || "Split");
+        } else {
+            alert("⚠️ Printer Bluetooth belum terhubung! Ubah pilihan ke 'Mode A4' di menu atas, atau hubungkan Bluetooth.");
+        }
     }
-    
-    // -- Logika Bluetooth Bawaan --
-    let o = window.globalRecentOrders.find(x => x.orderId === orderId);
-    if(!o) return;
-    let content = `Nota: ${o.orderId}\nKamar: ${o.roomNumber}\nKasir: ${o.cashier}\nWaktu: ${formatWIB(o.timestamp)}\n--------------------------------\n`;
-    content += o.readableReceipt;
-    let total = `Subtotal: Rp ${o.subtotal.toLocaleString('id-ID')}\n`;
-    if(o.discounts > 0) total += `Diskon: -Rp ${o.discounts.toLocaleString('id-ID')}\n`;
-    total += `TOTAL: Rp ${o.grandTotal.toLocaleString('id-ID')}\n`;
-    total += `\n[Pembayaran]\nCash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}\nCash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}\nQRIS Laundry: Rp ${o.qrisAmount.toLocaleString('id-ID')}\nTrf Hotel : Rp ${o.transferAmount.toLocaleString('id-ID')}`;
-    window.printGlobalReceipt("SALINAN NOTA", content, total, "TERIMA KASIH");
 };
 
 window.viewExpenseDetailsGlobal = function(expId) {
@@ -602,14 +605,16 @@ window.viewExpenseDetailsGlobal = function(expId) {
 window.printExpenseGlobal = function(expId) {
     if (window.currentPrintMode === 'desktop') {
         window.printExpenseStandard(expId);
-        return;
+    } else {
+        let e = window.globalRecentExpenses.find(x => x.expenseId === expId);
+        if(!e) return alert("Data pengeluaran tidak ditemukan!");
+        
+        if (typeof btCharacteristic === 'undefined' || !btCharacteristic) return alert("⚠️ Printer Bluetooth belum terhubung!");
+        
+        let content = `ID: ${e.expenseId}\nKasir: ${e.cashier}\nWaktu: ${formatWIB(e.timestamp)}\nLaci: ${e.drawer}\nKategori: ${e.category}\nKet: ${e.description}`;
+        let total = `TOTAL KELUAR: Rp ${e.amount.toLocaleString('id-ID')}`;
+        window.printGlobalReceipt("BUKTI PENGELUARAN", content, total);
     }
-
-    let e = window.globalRecentExpenses.find(x => x.expenseId === expId);
-    if(!e) return;
-    let content = `ID: ${e.expenseId}\nKasir: ${e.cashier}\nWaktu: ${formatWIB(e.timestamp)}\nLaci: ${e.drawer}\nKategori: ${e.category}\nKet: ${e.description}`;
-    let total = `TOTAL KELUAR: Rp ${e.amount.toLocaleString('id-ID')}`;
-    window.printGlobalReceipt("BUKTI PENGELUARAN", content, total, "SIMPAN SEBAGAI BUKTI");
 };
 
 window.viewShiftDetailsGlobal = function(shiftId) {
@@ -670,13 +675,14 @@ window.viewShiftDetailsGlobal = function(shiftId) {
 window.printShiftGlobal = async function(shiftId) {
     if (window.currentPrintMode === 'desktop') {
         window.printShiftStandard(shiftId);
-        return;
+    } else {
+        let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
+        if (!s && window.currentShiftData && window.currentShiftData.shiftId === shiftId) s = window.currentShiftData;
+        if(!s) return alert("Data shift tidak ditemukan!");
+        
+        if (typeof btCharacteristic === 'undefined' || !btCharacteristic) return alert("⚠️ Printer Bluetooth belum terhubung!");
+        await window.buildShiftReportReceipt(s);
     }
-
-    let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
-    if(!s) return;
-    if (!btCharacteristic) return alert("⚠️ Printer belum terhubung!");
-    await window.buildShiftReportReceipt(s);
 };
 
 // 3. CORE LOGIN FAST SYNC
@@ -1456,7 +1462,7 @@ window.renderHistoryList = function(type) {
                 <div style="display:flex; align-items:center; gap:8px;">${badge}
                     ${btnBatal}
                     <button onclick="viewOrderDetailsGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">👁️ Detail</button>
-                    <button onclick="Global('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
+                    <button onclick="window.printOrderGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">🖨️ Cetak</button>
                 </div></div>`;
         });
         
