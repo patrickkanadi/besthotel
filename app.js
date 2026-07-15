@@ -47,20 +47,20 @@ window.setPrintMode = function(mode) {
 };
 
 // ==========================================
-// ENGINE A4 PRINT (SMART ROUTING DENGAN HEADER/FOOTER SETTINGS)
+// ENGINE A4 PRINT (QUARTER LAYOUT & SHIFT REPORT)
 // ==========================================
-window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 'split') {
+window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 'quarter') {
     let printArea = document.getElementById("print-area");
     if (!printArea) return alert("Error: Area print tidak ditemukan di HTML.");
 
-    // Tarik data Header & Footer dari Settings Spreadsheet
     let h1 = window.globalSettings["Receipt_Header_1"] || "HOTEL POS";
     let h2 = window.globalSettings["Receipt_Header_2"] || "";
     let f1 = window.globalSettings["Receipt_Footer_1"] || "TERIMA KASIH";
     let f2 = window.globalSettings["Receipt_Footer_2"] || "";
     let f3 = window.globalSettings["Receipt_Footer_3"] || "";
 
-    if (layout === 'split') {
+    if (layout === 'quarter') {
+        // ✅ MODE ORDER & PENGELUARAN (1 Struk di Kiri Atas, 1/4 Kertas A4)
         let headerHtml = `<div style="text-align:center; font-weight:900; font-size:16px; margin-bottom:2px; letter-spacing:1px;">${h1}</div>`;
         if(h2) headerHtml += `<div style="text-align:center; font-size:10px; margin-bottom:6px;">${h2}</div>`;
 
@@ -69,16 +69,19 @@ window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 's
         if(f3) footerHtml += `<div style="text-align:center; font-size:9px; margin-top:3px;">${f3}</div>`;
 
         let singleReceipt = `
-            <div style="flex: 1; padding: 10px; border: 1px solid #000; border-radius: 8px; margin: 0 5px; display: flex; flex-direction: column; height: 135mm; overflow: hidden;">
+            <div style="width: 48%; padding: 15px; border: 1px dashed #aaa; border-radius: 8px; display: flex; flex-direction: column; height: 135mm; overflow: hidden; box-sizing: border-box;">
                 ${headerHtml}
-                <div style="text-align:center; font-weight:bold; font-size:12px; margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid #000;">${title}</div>
-                <div style="font-size:10px; flex-grow: 1; line-height:1.3; overflow: hidden;">${contentHtml}</div>
-                <div style="font-size:11px; margin-top:5px; border-top:1px dashed #000; padding-top:6px;">${totalHtml}</div>
+                <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:10px; padding-bottom:10px; border-bottom:1px solid #000;">${title}</div>
+                <div style="font-size:11px; flex-grow: 1; line-height:1.4; overflow: hidden;">${contentHtml}</div>
+                <div style="font-size:12px; margin-top:10px; border-top:1px dashed #000; padding-top:10px;">${totalHtml}</div>
                 ${footerHtml}
             </div>
         `;
-        printArea.innerHTML = `<div style="display:flex; justify-content:space-between; width:100%;">${singleReceipt}${singleReceipt}</div>`;
+        // Render HANYA SATU di kiri atas
+        printArea.innerHTML = `<div style="display:flex; width:100%; justify-content:flex-start;">${singleReceipt}</div>`;
+        
     } else {
+        // ✅ MODE SHIFT REPORT (Halaman Penuh / Tengah)
         let headerLarge = `<div style="text-align:center; font-weight:900; font-size:22px; margin-bottom:4px; letter-spacing:1px;">${h1}</div>`;
         if(h2) headerLarge += `<div style="text-align:center; font-size:14px; margin-bottom:8px;">${h2}</div>`;
 
@@ -104,43 +107,49 @@ window.printOrderStandard = function(orderId) {
     let o = window.globalRecentOrders.find(x => x.orderId === orderId);
     if(!o) return;
     
-    // Konversi string struk menjadi Tabel HTML agar harga rata kanan
-    let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:5px; margin-bottom:5px;">`;
-    let lines = o.readableReceipt.split('\n');
-    lines.forEach(line => {
-        if(!line.trim()) return;
-        // Tangkap Format: • 1x Nasi Goreng [H] (Rp 25.000)
-        let match = line.match(/•\s*([\d.]+x)\s*(.*?)\s*(?:\[[LH]\])?\s*\((Rp\s*[\d.,]+)\)/i);
-        if(match) {
-            itemsHtml += `<tr><td style="padding:4px 0; border-bottom:1px dashed #eee;">${match[1]} ${match[2]}</td><td style="text-align:right; padding:4px 0; border-bottom:1px dashed #eee; white-space:nowrap; font-weight:bold;">${match[3]}</td></tr>`;
-        } else {
-            itemsHtml += `<tr><td colspan="2" style="padding:4px 0; border-bottom:1px dashed #eee;">${line}</td></tr>`;
-        }
-    });
+    // 🎨 Menggunakan HTML Table agar Harga pasti rata kanan
+    let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:8px; margin-bottom:8px;">`;
+    if (o.items && o.items.length > 0) {
+        o.items.forEach(i => {
+            let qty = i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty;
+            let priceToUse = Number(i.price) || Number(i.originalPrice) || 0; // Fallback jika format data berubah
+            let lineTotal = (i.qty * priceToUse).toLocaleString('id-ID');
+            
+            itemsHtml += `<tr>
+                <td style="padding:4px 0; border-bottom:1px dashed #ddd; width:15%; vertical-align:top;">${qty}x</td>
+                <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:left; vertical-align:top;">${i.name}</td>
+                <td style="padding:4px 0; border-bottom:1px dashed #ddd; text-align:right; vertical-align:top; font-weight:bold;">Rp ${lineTotal}</td>
+            </tr>`;
+        });
+    } else {
+        // Fallback jika array items kosong (hanya ada readableReceipt)
+        itemsHtml += `<tr><td style="padding:4px 0;">${o.readableReceipt.replace(/\n/g, '<br>')}</td></tr>`;
+    }
     itemsHtml += `</table>`;
 
     let content = `
-        <div style="margin-bottom:10px; font-size:13px; border-bottom:2px solid #000; padding-bottom:8px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><b>Nota:</b> <span>${o.orderId}</span></div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><b>Kamar:</b> <span>${o.roomNumber}</span></div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><b>Kasir:</b> <span>${o.cashier}</span></div>
+        <div style="margin-bottom:8px; font-size:11px;">
+            <div style="display:flex; justify-content:space-between;"><b>Nota:</b> <span>${o.orderId}</span></div>
+            <div style="display:flex; justify-content:space-between;"><b>Kamar:</b> <span>${o.roomNumber}</span></div>
+            <div style="display:flex; justify-content:space-between;"><b>Kasir:</b> <span>${o.cashier}</span></div>
             <div style="display:flex; justify-content:space-between;"><b>Waktu:</b> <span>${formatWIB(o.timestamp)}</span></div>
         </div>
         ${itemsHtml}
     `;
     
     let total = `
-        <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:13px;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>
-        ${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:4px; color:#c0392b; font-size:13px;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}
-        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:18px; margin-top:8px; padding-top:8px; border-top:1px solid #000;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div>
-        <div style="margin-top:12px; font-size:10px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:5px; padding-top:8px; border-top:1px dashed #aaa;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Subtotal:</span><span>Rp ${o.subtotal.toLocaleString('id-ID')}</span></div>
+        ${o.discounts > 0 ? `<div style="display:flex; justify-content:space-between; margin-bottom:3px; color:#c0392b;"><span>Diskon:</span><span>-Rp ${o.discounts.toLocaleString('id-ID')}</span></div>` : ''}
+        <div style="display:flex; justify-content:space-between; font-weight:bold; font-size:16px; margin-top:5px; padding-top:5px; border-top:1px solid #000;"><span>TOTAL:</span><span>Rp ${o.grandTotal.toLocaleString('id-ID')}</span></div>
+        <div style="margin-top:10px; font-size:9.5px; color:#555; display:grid; grid-template-columns:1fr 1fr; gap:3px;">
             <div>Cash Laundry: Rp ${o.cashLaundryAmount.toLocaleString('id-ID')}</div>
             <div>Cash Hotel: Rp ${o.cashHotelAmount.toLocaleString('id-ID')}</div>
             <div>QRIS: Rp ${o.qrisAmount.toLocaleString('id-ID')}</div>
             <div>Transfer: Rp ${o.transferAmount.toLocaleString('id-ID')}</div>
         </div>
     `;
-    window.printStandardGlobal("SALINAN NOTA", content, total, "split");
+    // ✅ Mengubah "SALINAN NOTA" menjadi "RECEIPT" dan menggunakan mode "quarter"
+    window.printStandardGlobal("RECEIPT", content, total, "quarter");
 };
 
 window.printExpenseStandard = function(expId) {
@@ -148,7 +157,9 @@ window.printExpenseStandard = function(expId) {
     if(!e) return;
     let content = `<b>ID:</b> ${e.expenseId}<br><b>Kasir:</b> ${e.cashier}<br><b>Waktu:</b> ${formatWIB(e.timestamp)}<br><b>Laci:</b> ${e.drawer}<br><b>Kategori:</b> ${e.category}<br><b>Ket:</b> ${e.description}`;
     let total = `<div style="font-size:14px; font-weight:bold; text-align:right;">TOTAL KELUAR: Rp ${e.amount.toLocaleString('id-ID')}</div>`;
-    window.printStandardGlobal("BUKTI PENGELUARAN", content, total, "split");
+    
+    // ✅ Gunakan mode quarter
+    window.printStandardGlobal("BUKTI PENGELUARAN", content, total, "quarter");
 };
 
 window.printShiftStandard = function(shiftId) {
@@ -156,19 +167,48 @@ window.printShiftStandard = function(shiftId) {
     if (!s && window.currentShiftData && window.currentShiftData.shiftId === shiftId) s = window.currentShiftData;
     if (!s) return alert("Data shift tidak ditemukan.");
     
-    // Render Hierarki Item Terjual agar rapi (Seperti Gambar 3)
-    let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:14px; margin-top:10px;">`;
-    if (typeof s.foodSummary === 'string' && s.foodSummary.length > 0) {
-        itemsHtml += `<tr><td>${s.foodSummary}</td></tr>`;
-    } else if (typeof s.foodSummary === 'object' && s.foodSummary !== null && Object.keys(s.foodSummary).length > 0) {
-        for (const loc in s.foodSummary) { 
-            itemsHtml += `<tr><td colspan="2" style="font-weight:bold; color:#000; padding-top:12px; border-bottom:1px solid #aaa;">📍 ${loc}</td></tr>`;
-            for (const cat in s.foodSummary[loc]) { 
+    // 🎨 PARSER CERDAS: Mengubah string mentah kembali menjadi object rapi
+    let parseItems = {};
+    if (typeof s.foodSummary === 'object' && s.foodSummary !== null && Object.keys(s.foodSummary).length > 0) {
+        parseItems = s.foodSummary;
+    } else if (typeof s.foodSummary === 'string' && s.foodSummary.trim().length > 0) {
+        let lines = s.foodSummary.split('\n');
+        let currLoc = "Area Lainnya";
+        let currCat = "Kategori Lainnya";
+        
+        lines.forEach(line => {
+            line = line.trim();
+            if (!line) return;
+            if (line.startsWith("📍")) {
+                currLoc = line.replace(/📍/g, '').trim();
+            } else if (line.startsWith("📁")) {
+                currCat = line.replace(/📁/g, '').trim();
+            } else if (line.includes(":::")) {
+                let parts = line.split(":::");
+                if (!parseItems[currLoc]) parseItems[currLoc] = {};
+                if (!parseItems[currLoc][currCat]) parseItems[currLoc][currCat] = {};
+                parseItems[currLoc][currCat][parts[0].trim()] = parts[1].trim();
+            }
+        });
+    }
+
+    // 🎨 Layout Hirarki Rapi (Lokasi -> Kategori -> Item)
+    let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:10px;">`;
+    if (Object.keys(parseItems).length > 0) {
+        for (const loc in parseItems) {
+            itemsHtml += `<tr><td colspan="2" style="font-weight:bold; color:#000; padding-top:12px; border-bottom:1px solid #aaa;">📍 ${loc.toUpperCase()}</td></tr>`;
+            for (const cat in parseItems[loc]) {
                 itemsHtml += `<tr><td colspan="2" style="font-weight:bold; font-style:italic; color:#555; padding-top:6px; padding-left:10px;">📁 ${cat}</td></tr>`;
-                for (const item in s.foodSummary[loc][cat]) { 
-                    itemsHtml += `<tr><td style="padding:4px 0 4px 25px;">${item}</td><td style="text-align:right; font-weight:bold;">${s.foodSummary[loc][cat][item]}x</td></tr>`; 
-                } 
-            } 
+                for (const item in parseItems[loc][cat]) {
+                    let qtyStr = parseItems[loc][cat][item];
+                    if (!String(qtyStr).endsWith('x')) qtyStr += 'x'; // Pastikan format x ada
+                    
+                    itemsHtml += `<tr>
+                        <td style="padding:4px 0 4px 25px; border-bottom:1px dashed #eee;">${item}</td>
+                        <td style="text-align:right; font-weight:bold; border-bottom:1px dashed #eee;">${qtyStr}</td>
+                    </tr>`;
+                }
+            }
         }
     } else {
         itemsHtml += `<tr><td style="text-align:center; color:#888;">Belum ada item terjual</td></tr>`;
@@ -1381,7 +1421,7 @@ window.renderHistoryList = function(type) {
             let btnBatal = (o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending") ? `<button onclick="requestVoid('orders', '${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #e74c3c; background:#f8d7da; color:#721c24;">❌ Batal</button>` : '';
 
             container.innerHTML += `<div class="history-row">
-                <div><strong>Kamar: ${o.roomNumber}</strong><br><small style="color:#7f8c8d;">${formatTimeOnlyWIB(o.timestamp)} | Rp ${o.grandTotal.toLocaleString('id-ID')} | Kasir: ${o.cashier}</small></div>
+                <div><strong>Kamar: ${o.roomNumber}</strong><br><small style="color:#7f8c8d;">${formatWIB(o.timestamp)} | Rp ${o.grandTotal.toLocaleString('id-ID')} | Kasir: ${o.cashier}</small></div>
                 <div style="display:flex; align-items:center; gap:8px;">${badge}
                     ${btnBatal}
                     <button onclick="viewOrderDetailsGlobal('${o.orderId}')" style="padding:6px; font-size:12px; cursor:pointer; border-radius:4px; border:1px solid #ddd; background:#fff;">👁️ Detail</button>
