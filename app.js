@@ -1568,6 +1568,11 @@ window.saveExpense = function() {
     alert("Pengeluaran Berhasil Dicatat!"); window.runBackgroundSync();
 };
 
+window.updateMasterDrawerBalance = function(addL, addH) {
+    window.masterDrawerBalanceLaundry += addL;
+    window.masterDrawerBalanceHotel += addH;
+};
+
 window.requestVoid = function(type, id) {
     let authPin = prompt("Masukkan Master PIN untuk Otorisasi Instan\n(Atau kosongkan & klik OK untuk mengirim permohonan ke Admin):");
     
@@ -1575,28 +1580,38 @@ window.requestVoid = function(type, id) {
         if (authPin.trim() !== "") {
             hashString(authPin).then(hashed => {
                 if (hashed === window.globalSettings["Master_PIN"]) {
-                    // PIN BENAR -> Otorisasi Instan
                     let payload = { id: id, type: type, status: "Voided", syncStatus: "Pending" };
                     db.transaction(["void_requests"], "readwrite").objectStore("void_requests").add(payload);
                     
-                    if(type === 'orders') { let o = window.globalRecentOrders.find(x => x.orderId === id); if(o) o.orderStatus = "Voided"; window.renderHistoryList('orders'); }
-                    if(type === 'expenses') { let e = window.globalRecentExpenses.find(x => x.expenseId === id); if(e) e.status = "Voided"; window.renderHistoryList('expenses'); }
-                    if(type === 'shifts') { let s = window.globalRecentShifts.find(x => x.shiftId === id); if(s) s.status = "Voided"; window.renderHistoryList('shifts'); }
+                    // ✅ BUG 2 FIX: Simpan status Void secara PERMANEN di memori tablet agar tidak dihitung Shift
+                    if(type === 'orders') { 
+                        let o = window.globalRecentOrders.find(x => x.orderId === id); 
+                        if(o) { o.orderStatus = "Voided"; db.transaction(["orders"], "readwrite").objectStore("orders").put(o); } 
+                        window.renderHistoryList('orders'); 
+                    }
+                    if(type === 'expenses') { 
+                        let e = window.globalRecentExpenses.find(x => x.expenseId === id); 
+                        if(e) { e.status = "Voided"; db.transaction(["expenses"], "readwrite").objectStore("expenses").put(e); } 
+                        window.renderHistoryList('expenses'); 
+                    }
+                    if(type === 'shifts') { 
+                        let s = window.globalRecentShifts.find(x => x.shiftId === id); 
+                        if(s) { s.status = "Voided"; db.transaction(["shift_reports"], "readwrite").objectStore("shift_reports").put(s); } 
+                        window.renderHistoryList('shifts'); 
+                    }
                     
                     alert("✅ Otorisasi Berhasil! Transaksi dibatalkan secara instan dan stok dikembalikan.");
                     window.runBackgroundSync();
-                } else {
-                    alert("⚠️ Master PIN Salah!");
-                }
+                } else { alert("⚠️ Master PIN Salah!"); }
             });
         } else {
-            // PIN KOSONG -> Minta Persetujuan Admin (Normal)
             let payload = { id: id, type: type, status: "Void Pending", syncStatus: "Pending" };
             db.transaction(["void_requests"], "readwrite").objectStore("void_requests").add(payload);
             
-            if(type === 'orders') { let o = window.globalRecentOrders.find(x => x.orderId === id); if(o) o.orderStatus = "Void Pending"; window.renderHistoryList('orders'); }
-            if(type === 'expenses') { let e = window.globalRecentExpenses.find(x => x.expenseId === id); if(e) e.status = "Void Pending"; window.renderHistoryList('expenses'); }
-            if(type === 'shifts') { let s = window.globalRecentShifts.find(x => x.shiftId === id); if(s) s.status = "Void Pending"; window.renderHistoryList('shifts'); }
+            // ✅ BUG 2 FIX: Simpan status Void Pending ke memori tablet
+            if(type === 'orders') { let o = window.globalRecentOrders.find(x => x.orderId === id); if(o) { o.orderStatus = "Void Pending"; db.transaction(["orders"], "readwrite").objectStore("orders").put(o); } window.renderHistoryList('orders'); }
+            if(type === 'expenses') { let e = window.globalRecentExpenses.find(x => x.expenseId === id); if(e) { e.status = "Void Pending"; db.transaction(["expenses"], "readwrite").objectStore("expenses").put(e); } window.renderHistoryList('expenses'); }
+            if(type === 'shifts') { let s = window.globalRecentShifts.find(x => x.shiftId === id); if(s) { s.status = "Void Pending"; db.transaction(["shift_reports"], "readwrite").objectStore("shift_reports").put(s); } window.renderHistoryList('shifts'); }
             
             alert("Permintaan pembatalan dikirim. Menunggu persetujuan Admin di Spreadsheet.");
             window.runBackgroundSync();
@@ -2310,20 +2325,25 @@ window.openShiftReport = async function() {
     let originalText = btn ? btn.innerText : "📊 Shift";
     if (btn) btn.innerText = "⏳ Sinkronisasi...";
     
-    // GUARANTEE DRAWER ACCURACY: Push local changes, pull exact Setting numbers
     await window.runBackgroundSync();
     await window.syncMasterData(true);
     
     if (btn) btn.innerText = originalText;
 
-    let activeOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
-    let activeExpenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
-    let activeDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
-
-    let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
-    let shiftExpenses = activeExpenses.filter(e => e.shiftId === currentShiftId && e.status !== "Voided" && e.status !== "Void Pending");
-    let shiftDrops = activeDrops.filter(d => d.shiftId === currentShiftId);
+    // ✅ BUG 3 FIX: Mengambil data langsung dari memori Sync Server untuk akurasi 100%
+    let shiftOrders = (window.globalRecentOrders || []).filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
+    let shiftExpenses = (window.globalRecentExpenses || []).filter(e => e.shiftId === currentShiftId && e.status !== "Voided" && e.status !== "Void Pending");
+    let shiftDrops = (window.globalRecentDrops || []).filter(d => d.shiftId === currentShiftId);
     
+    // ✅ GHOST SHIFT RULE: 0 transaksi & di bawah 5 Menit -> Hapus shift & log out diam-diam
+    let shiftDurationMinutes = (Date.now() - new Date(currentLoginTime).getTime()) / 60000;
+    if (shiftOrders.length === 0 && shiftExpenses.length === 0 && shiftDrops.length === 0 && shiftDurationMinutes <= 5) {
+        db.transaction(["active_shifts"], "readwrite").objectStore("active_shifts").delete(currentPin);
+        window.currentShiftId = ""; window.currentCashier = "";
+        window.location.reload();
+        return;
+    }
+
     let tOrders = 0; let tFree = 0; let omsetL = 0; let omsetH = 0; let cashL = 0; let cashH = 0; let qrisL = 0; let transferH = 0;
     let foodSummary = {};
     
@@ -2333,34 +2353,42 @@ window.openShiftReport = async function() {
         qrisL += (o.qrisAmount || 0); transferH += (o.transferAmount || 0);
         
         let orderOmsetL = 0; let orderOmsetH = 0;
-        if (o.items) o.items.forEach(i => { 
-            let lineTotal = i.qty * i.price;
-            if(i.location && i.location.toLowerCase().includes('laundry')) orderOmsetL += lineTotal;
-            else orderOmsetH += lineTotal;
-            
-            let loc = i.location || "Lainnya"; let cat = i.category || "Lainnya";
-            if(!foodSummary[loc]) foodSummary[loc] = {};
-            if(!foodSummary[loc][cat]) foodSummary[loc][cat] = {};
-            foodSummary[loc][cat][i.name] = (foodSummary[loc][cat][i.name] || 0) + i.qty;
-        });
+        if (o.items) {
+            o.items.forEach(i => { 
+                let lineTotal = i.qty * (Number(i.price) || Number(i.originalPrice) || 0);
+                if(i.location && i.location.toLowerCase().includes('laundry')) orderOmsetL += lineTotal;
+                else orderOmsetH += lineTotal;
+                
+                let loc = i.location || "Lainnya"; let cat = i.category || "Lainnya";
+                if(!foodSummary[loc]) foodSummary[loc] = {};
+                if(!foodSummary[loc][cat]) foodSummary[loc][cat] = {};
+                foodSummary[loc][cat][i.name] = (foodSummary[loc][cat][i.name] || 0) + i.qty;
+            });
+        } else if (o.readableReceipt) {
+            // Backup jika array item belum diunduh penuh
+            let lTotal = (o.cashLaundryAmount||0) + (o.qrisAmount||0);
+            let hTotal = (o.cashHotelAmount||0) + (o.transferAmount||0);
+            if(lTotal+hTotal === 0) hTotal = o.subtotal;
+            orderOmsetL += lTotal; orderOmsetH += hTotal;
+        }
         omsetL += orderOmsetL; omsetH += orderOmsetH;
     });
 
     let expL = 0; let expH = 0;
     shiftExpenses.forEach(e => {
-        if (e.drawer === 'Laundry') expL += e.amount;
+        if (String(e.drawer).toLowerCase().includes('laundry')) expL += e.amount;
         else expH += e.amount;
     });
     
     let dropL = 0; let dropH = 0;
     shiftDrops.forEach(d => {
-        if (d.drawer === 'Laundry') dropL += d.amount;
+        if (String(d.drawer).toLowerCase().includes('laundry')) dropL += d.amount;
         else dropH += d.amount;
     });
 
-    // Uang fisik aktual = Cash Masuk - Expense - Uang Ditarik ke Admin/Bank
-    let netL = cashL - expL - dropL;
-    let netH = cashH - expH - dropH;
+    // ✅ BUG 1 FIX: Masukkan QRIS dan Transfer sebagai bagian dari perhitungan "Laci"
+    let netL = (cashL + qrisL) - expL - dropL;
+    let netH = (cashH + transferH) - expH - dropH;
 
     window.currentShiftData = { 
         shiftId: currentShiftId, loginTime: currentLoginTime, logoutTime: new Date().toISOString(), cashier: currentCashier, 
@@ -2383,7 +2411,6 @@ window.openShiftReport = async function() {
     if (document.getElementById("sr-exp-laundry")) document.getElementById("sr-exp-laundry").innerText = "Rp " + (expL + dropL).toLocaleString('id-ID');
     if (document.getElementById("sr-exp-hotel")) document.getElementById("sr-exp-hotel").innerText = "Rp " + (expH + dropH).toLocaleString('id-ID');
 
-    // 👉 PERFECT SYNC UI: We pull EXACTLY what the Google Sheet Settings says
     if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + window.masterDrawerBalanceLaundry.toLocaleString('id-ID');
     if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + window.masterDrawerBalanceHotel.toLocaleString('id-ID');
 
@@ -2497,14 +2524,15 @@ window.onload = async () => {
 
         // 6 Hours = 21600 seconds
         if (idleTime >= 21600) {
-            let activeOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
-            let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId);
+            let shiftOrders = (window.globalRecentOrders || []).filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
+            let shiftExpenses = (window.globalRecentExpenses || []).filter(e => e.shiftId === currentShiftId && e.status !== "Voided");
+            let shiftDrops = (window.globalRecentDrops || []).filter(d => d.shiftId === currentShiftId);
             
             let shiftStartTime = new Date(currentLoginTime).getTime();
             let shiftDurationMinutes = (Date.now() - shiftStartTime) / 1000 / 60;
 
-            // Ghost Shift Rule: < 5 minutes AND 0 orders
-            if (shiftOrders.length === 0 && shiftDurationMinutes < 5) {
+            // Ghost Shift Rule: < 5 minutes AND 0 orders/expenses
+            if (shiftOrders.length === 0 && shiftExpenses.length === 0 && shiftDrops.length === 0 && shiftDurationMinutes <= 5) {
                 db.transaction(["active_shifts"], "readwrite").objectStore("active_shifts").delete(currentPin);
                 alert("Sistem mendeteksi shift kosong. Logout otomatis.");
                 window.location.reload();
