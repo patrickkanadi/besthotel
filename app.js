@@ -2459,7 +2459,7 @@ window.triggerEndShift = async function(isAutoClose = false) {
     if (!isAutoClose) {
         if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
         
-        // ✅ FIX: Patuhi Dropdown Global saat End Shift!
+        // Patuhi Dropdown Global saat End Shift Manual
         if (window.currentPrintMode === 'desktop') {
             window.printShiftStandard(data.shiftId);
         } else {
@@ -2470,6 +2470,10 @@ window.triggerEndShift = async function(isAutoClose = false) {
                 catch (e) { alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem."); }
             }
         }
+    } else {
+        // ✅ LEAVE A NOTE FOR AUTO-CLOSE
+        data.status = "Auto-Closed (9h Limit)";
+        data.cashier = data.cashier + " (Auto)";
     }
     
     let tx = db.transaction(["local_shift_history", "shift_reports", "active_shifts"], "readwrite");
@@ -2481,7 +2485,7 @@ window.triggerEndShift = async function(isAutoClose = false) {
         if(mod) mod.classList.add("hidden");
         await window.runBackgroundSync(); 
         
-        if(isAutoClose) alert("Sistem logout otomatis karena tidak ada aktivitas selama 6 jam. Laporan shift telah disimpan.");
+        if(isAutoClose) alert("Sistem logout otomatis karena shift telah mencapai batas maksimal 9 jam. Laporan shift telah disimpan otomatis ke server.");
         window.location.reload(); 
     };
 };
@@ -2517,26 +2521,26 @@ window.onload = async () => {
     
     // AUTO LOGOUT LOGIC (Checks every 30 seconds)
     window.setInterval(async () => {
-        if (!currentShiftId) return; // Not logged in
-        idleTime += 30; // Add 30 seconds
+        if (!currentShiftId || !currentLoginTime) return; // Not logged in
 
-        // 6 Hours = 21600 seconds
-        if (idleTime >= 21600) {
+        // Hitung durasi aktual dari waktu pertama kali login
+        let shiftStartTime = new Date(currentLoginTime).getTime();
+        let elapsedHours = (Date.now() - shiftStartTime) / (1000 * 60 * 60);
+
+        // Limit Maksimal 9 Jam (Berdasarkan waktu login, bukan idle mouse)
+        if (elapsedHours >= 9) {
             let activeOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
             let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId);
             
-            let shiftStartTime = new Date(currentLoginTime).getTime();
-            let shiftDurationMinutes = (Date.now() - shiftStartTime) / 1000 / 60;
-
-            // Ghost Shift Rule: < 5 minutes AND 0 orders
-            if (shiftOrders.length === 0 && shiftDurationMinutes < 5) {
+            // Ghost Shift Rule: 0 orders dalam 9 jam
+            if (shiftOrders.length === 0) {
                 db.transaction(["active_shifts"], "readwrite").objectStore("active_shifts").delete(currentPin);
-                alert("Sistem mendeteksi shift kosong. Logout otomatis.");
+                alert("Sistem mendeteksi shift kosong selama 9 jam. Logout otomatis tanpa menyimpan laporan.");
                 window.location.reload();
             } else {
                 // Legitimate Shift: Auto-End & Report
                 await window.openShiftReport();
-                // Force close without printing
+                // Eksekusi penutupan paksa (isAutoClose = true)
                 window.triggerEndShift(true); 
             }
         }
