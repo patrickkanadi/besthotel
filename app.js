@@ -2332,22 +2332,33 @@ window.openShiftReport = async function() {
     let localExpenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
     let localDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
 
-    // ✅ BUG 2 FIX: Read local items for accurate item count, but verify statuses against synced Admin server data
-    localOrders.forEach(lo => {
-        let serverOrder = (window.globalRecentOrders || []).find(so => so.orderId === lo.orderId);
-        if (serverOrder) {
-            lo.orderStatus = serverOrder.orderStatus; 
-        }
+    // ✅ BULLETPROOF FIX: Combine Google Sheet memory with Local Memory
+    let allOrdersMap = new Map();
+    
+    // 1. Put Server Data in first
+    (window.globalRecentOrders || []).forEach(so => {
+        allOrdersMap.set(so.orderId, so);
     });
+    
+    // 2. Overwrite with Local Data (since it has the newest unsynced changes)
+    localOrders.forEach(lo => {
+        let existing = allOrdersMap.get(lo.orderId);
+        if (existing) {
+            lo.orderStatus = existing.orderStatus; // Sync status with server (e.g., if Admin voided it)
+        }
+        allOrdersMap.set(lo.orderId, lo);
+    });
+
+    let combinedOrders = Array.from(allOrdersMap.values());
+
+    // 3. Filter using the combined list
+    let shiftOrders = combinedOrders.filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
 
     localExpenses.forEach(le => {
         let serverExp = (window.globalRecentExpenses || []).find(se => se.expenseId === le.expenseId);
-        if (serverExp) {
-            le.status = serverExp.status;
-        }
+        if (serverExp) le.status = serverExp.status;
     });
 
-    let shiftOrders = localOrders.filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
     let shiftExpenses = localExpenses.filter(e => e.shiftId === currentShiftId && e.status !== "Voided" && e.status !== "Void Pending");
     let shiftDrops = localDrops.filter(d => d.shiftId === currentShiftId);
     
