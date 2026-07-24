@@ -1924,15 +1924,6 @@ window.syncMasterData = async function(forceAwait = false) {
             window.globalPendingInbounds = result.data.pendingInbounds || [];
             
             window.globalSettings = result.data.settings || {};
-            
-            // ✅ TOGGLE EMERGENCY INBOUND BUTTON
-            let enableEmgInbound = String(window.globalSettings["Enable_Emergency_Inbound"]).toUpperCase() !== "FALSE";
-            let btnEmg = document.getElementById("btn-emergency-inbound");
-            if (btnEmg) {
-                if (enableEmgInbound) btnEmg.classList.remove("hidden");
-                else btnEmg.classList.add("hidden");
-            }
-
             let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
             let hasUnpaid = window.globalUnpaidOrders && window.globalUnpaidOrders.length > 0;
             let tabUnpaid = document.getElementById("tab-unpaid-orders");
@@ -1945,7 +1936,7 @@ window.syncMasterData = async function(forceAwait = false) {
 
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
-            // ✅ Extract unsynced local orders to merge with server orders
+            // ✅ FIX: Extract unsynced local orders to merge with server orders
             let localOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
             let pendingOrders = localOrders.filter(o => o.syncStatus === "Pending");
 
