@@ -482,14 +482,13 @@ window.buildShiftReportReceipt = async function(data) {
     let r = CMD_INIT + CMD_CENTER + CMD_BOLD_ON + CMD_BIG + h1 + "\n" + CMD_NORMAL + CMD_BOLD_OFF;
     if(h2) r += CMD_CENTER + h2 + "\n";
     
-    r += CMD_CENTER + "LAPORAN TUTUP SHIFT\n--------------------------------\n" + CMD_LEFT;
-    r += "ID Shift: " + data.shiftId + "\n";
-    r += "Kasir   : " + data.cashier + "\n";
-    r += "Masuk   : " + formatWIB(data.loginTime) + "\n";
-    r += "Keluar  : " + formatWIB(data.logoutTime) + "\n";
+    r += CMD_CENTER + "LAPORAN SHIFT\n--------------------------------\n" + CMD_LEFT;
+    r += "Shift : " + data.shiftId + "\n";
+    r += "Kasir : " + data.cashier + "\n";
+    r += "Masuk : " + formatWIB(data.loginTime) + "\n";
+    r += "Keluar: " + formatWIB(data.logoutTime) + "\n";
     r += "--------------------------------\n";
     
-    // Tambahan Rincian Item Terjual di Bluetooth
     r += CMD_BOLD_ON + "ITEM TERJUAL:" + CMD_BOLD_OFF + "\n";
     if (typeof data.foodSummary === 'object' && data.foodSummary !== null && Object.keys(data.foodSummary).length > 0) {
         for (const loc in data.foodSummary) {
@@ -497,32 +496,35 @@ window.buildShiftReportReceipt = async function(data) {
             for (const cat in data.foodSummary[loc]) {
                 for (const item in data.foodSummary[loc][cat]) {
                     let qty = data.foodSummary[loc][cat][item];
-                    r += formatEscPosLine(` ${item.substring(0, 24)}`, `${qty}x`, false) + "\n";
+                    let qtyStr = (qty % 1 !== 0) ? Number(qty).toFixed(2) : qty;
+                    r += formatEscPosLine(` ${item.substring(0, 24)}`, `${qtyStr}x`, false) + "\n";
                 }
             }
         }
     } else {
         r += " Belum ada item terjual\n";
     }
+    
     r += "--------------------------------\n";
-    
-    r += CMD_BOLD_ON + "PENERIMAAN LAUNDRY:" + CMD_BOLD_OFF + "\n";
-    r += formatEscPosLine("Tunai", (data.cashLaundry || 0).toLocaleString('id-ID'), false) + "\n";
-    r += formatEscPosLine("QRIS", (data.qrisLaundry || 0).toLocaleString('id-ID'), false) + "\n";
-    r += formatEscPosLine("Omset Laundry", (data.omsetLaundry || 0).toLocaleString('id-ID'), false) + "\n--------------------------------\n";
-    
-    r += CMD_BOLD_ON + "PENERIMAAN HOTEL:" + CMD_BOLD_OFF + "\n";
-    r += formatEscPosLine("Tunai", (data.cashHotel || 0).toLocaleString('id-ID'), false) + "\n";
-    r += formatEscPosLine("Transfer", (data.transferHotel || 0).toLocaleString('id-ID'), false) + "\n";
-    r += formatEscPosLine("Omset Hotel", (data.omsetHotel || 0).toLocaleString('id-ID'), false) + "\n--------------------------------\n";
+    // Laundry Block (Vertically Stacked for 58mm perfectly)
+    r += CMD_CENTER + CMD_BOLD_ON + "RINGKASAN LAUNDRY" + CMD_BOLD_OFF + "\n" + CMD_LEFT;
+    r += formatEscPosLine("Omset", "Rp " + (data.omsetLaundry || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("Tunai Masuk", "Rp " + (data.cashLaundry || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("QRIS Masuk", "Rp " + (data.qrisLaundry || 0).toLocaleString('id-ID'), false) + "\n";
+    let totalKeluarl = (data.expLaundry || 0) + (data.dropLaundry || 0);
+    if (totalKeluarl > 0) r += formatEscPosLine("Tarik/Keluar", "-Rp " + totalKeluarl.toLocaleString('id-ID'), false) + "\n";
+    r += CMD_BOLD_ON + formatEscPosLine("NETTO LACI", "Rp " + (data.netLaundry || 0).toLocaleString('id-ID'), false) + "\n" + CMD_BOLD_OFF;
 
-    r += CMD_BOLD_ON + "PENGELUARAN:" + CMD_BOLD_OFF + "\n";
-    r += formatEscPosLine("Laci Laundry", (data.expLaundry || 0).toLocaleString('id-ID'), false) + "\n";
-    r += formatEscPosLine("Laci Hotel", (data.expHotel || 0).toLocaleString('id-ID'), false) + "\n--------------------------------\n";
-
-    r += CMD_BOLD_ON + "SISA UANG LACI AKTUAL:" + CMD_BOLD_OFF + "\n";
-    r += formatEscPosLine("Laci Laundry", (data.netLaundry || 0).toLocaleString('id-ID'), false) + "\n";
-    r += formatEscPosLine("Laci Hotel", (data.netHotel || 0).toLocaleString('id-ID'), false) + "\n--------------------------------\n";
+    r += "--------------------------------\n";
+    // Hotel Block (Vertically Stacked for 58mm perfectly)
+    r += CMD_CENTER + CMD_BOLD_ON + "RINGKASAN HOTEL" + CMD_BOLD_OFF + "\n" + CMD_LEFT;
+    r += formatEscPosLine("Omset", "Rp " + (data.omsetHotel || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("Tunai Masuk", "Rp " + (data.cashHotel || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("Trf Masuk", "Rp " + (data.transferHotel || 0).toLocaleString('id-ID'), false) + "\n";
+    let totalKeluarH = (data.expHotel || 0) + (data.dropHotel || 0);
+    if (totalKeluarH > 0) r += formatEscPosLine("Tarik/Keluar", "-Rp " + totalKeluarH.toLocaleString('id-ID'), false) + "\n";
+    r += CMD_BOLD_ON + formatEscPosLine("NETTO LACI", "Rp " + (data.netHotel || 0).toLocaleString('id-ID'), false) + "\n" + CMD_BOLD_OFF;
+    r += "--------------------------------\n";
     
     r += CMD_CENTER + CMD_BOLD_ON + f1 + "\n" + CMD_BOLD_OFF;
     if(f2) r += CMD_CENTER + f2 + "\n";
@@ -789,27 +791,19 @@ window.viewShiftDetailsGlobal = function(shiftId) {
 
         lines.forEach(line => {
             if (line.startsWith("📍")) {
-                // Tutup box lokasi sebelumnya jika ada
-                if (currentLocBlock !== "") {
-                    foodHtml += currentLocBlock + `</div>`;
-                }
-                // Buka box lokasi baru dengan style fluid yang sama seperti Open Shift
-                currentLocBlock = `<div style="break-inside: avoid; margin-bottom: 12px; background: #f9f9f9; padding: 6px; border-radius: 6px; border: 1px solid #eee;">`;
-                currentLocBlock += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px;">${line}</div>`;
+                if (currentLocBlock !== "") { foodHtml += currentLocBlock + `</div>`; }
+                currentLocBlock = `<div style="break-inside: avoid; margin-bottom: 15px; background: #f9f9f9; padding: 12px; border-radius: 8px; border: 1px solid #eee;">`;
+                currentLocBlock += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 5px; font-size: 16px;">${line}</div>`;
             } else if (line.startsWith("📁")) {
-                currentLocBlock += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">${line}</div>`;
+                currentLocBlock += `<div style="font-weight:bold; color:#7f8c8d; margin-top:10px; font-size:15px;">${line}</div>`;
             } else if (line.includes(":::")) {
                 let parts = line.split(":::");
-                currentLocBlock += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${parts[0].trim()}</span> <strong>${parts[1].trim()}x</strong></div>`;
+                currentLocBlock += `<div style="display:flex; justify-content:space-between; padding:5px 0; margin-left:10px; font-size:15px;"><span>${parts[0].trim()}</span> <strong>${parts[1].trim()}x</strong></div>`;
             } else if (line.trim()) {
-                currentLocBlock += `<div style="padding:2px 0; margin-left:10px;">${line}</div>`;
+                currentLocBlock += `<div style="padding:5px 0; margin-left:10px; font-size:15px;">${line}</div>`;
             }
         });
-
-        // Pastikan box lokasi terakhir ditutup
-        if (currentLocBlock !== "") {
-            foodHtml += currentLocBlock + `</div>`;
-        }
+        if (currentLocBlock !== "") { foodHtml += currentLocBlock + `</div>`; }
     }
     document.getElementById("hist-sr-items-summary").innerHTML = foodHtml || "Belum ada item terjual";
     
@@ -2434,13 +2428,13 @@ window.openShiftReport = async function() {
 
     let foodHtml = "";
     for (const [locName, categories] of Object.entries(foodSummary)) {
-        foodHtml += `<div style="break-inside: avoid; margin-bottom: 12px; background: #f9f9f9; padding: 6px; border-radius: 6px; border: 1px solid #eee;">`;
-        foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 2px;">📍 ${locName}</div>`;
+        foodHtml += `<div style="break-inside: avoid; margin-bottom: 15px; background: #f9f9f9; padding: 12px; border-radius: 8px; border: 1px solid #eee;">`;
+        foodHtml += `<div style="font-weight:bold; color:#e67e22; border-bottom: 1px solid #ddd; padding-bottom: 5px; font-size: 16px;">📍 ${locName}</div>`;
         for (const [catName, items] of Object.entries(categories)) {
-            foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-top:6px; font-size:11px;">📁 ${catName}</div>`;
+            foodHtml += `<div style="font-weight:bold; color:#7f8c8d; margin-top:10px; font-size:15px;">📁 ${catName}</div>`;
             for (const [name, qty] of Object.entries(items)) {
                 let qtyStr = (qty % 1 !== 0) ? Number(qty).toFixed(2) : qty;
-                foodHtml += `<div style="display:flex; justify-content:space-between; padding:2px 0; margin-left:10px;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
+                foodHtml += `<div style="display:flex; justify-content:space-between; padding:5px 0; margin-left:10px; font-size:15px;"><span>${name}</span> <strong>${qtyStr}x</strong></div>`;
             }
         }
         foodHtml += `</div>`;
