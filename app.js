@@ -51,7 +51,7 @@ window.setPrintMode = function(mode) {
 };
 
 // ==========================================
-// ENGINE A4 PRINT (QUARTER & ULTRA-COMPACT LAYOUT)
+// ENGINE A4 PRINT (QUARTER & SINGLE LAYOUT)
 // ==========================================
 window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 'quarter') {
     let printArea = document.getElementById("print-area");
@@ -84,20 +84,20 @@ window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 'q
         printArea.innerHTML = `<div style="display:flex; width:100%; justify-content:flex-start;">${singleReceipt}</div>`;
         
     } else {
-        // ✅ MODE SHIFT REPORT (Ultra-Compact agar muat ratusan item 1 halaman)
-        let headerLarge = `<div style="text-align:center; font-weight:900; font-size:18px; margin-bottom:2px; letter-spacing:1px;">${h1}</div>`;
-        if(h2) headerLarge += `<div style="text-align:center; font-size:11px; margin-bottom:6px;">${h2}</div>`;
+        // ✅ MODE SHIFT REPORT (Ukuran Font Lebih Besar & Mudah Dibaca)
+        let headerLarge = `<div style="text-align:center; font-weight:900; font-size:22px; margin-bottom:4px; letter-spacing:1px;">${h1}</div>`;
+        if(h2) headerLarge += `<div style="text-align:center; font-size:13px; margin-bottom:8px;">${h2}</div>`;
 
-        let footerLarge = `<div style="text-align:center; font-size:12px; font-weight:bold; border-top:1px solid #000; padding-top:8px; margin-top:8px;">${f1}</div>`;
-        if(f2) footerLarge += `<div style="text-align:center; font-size:10px; margin-top:3px;">${f2}</div>`;
-        if(f3) footerLarge += `<div style="text-align:center; font-size:10px; margin-top:3px;">${f3}</div>`;
+        let footerLarge = `<div style="text-align:center; font-size:14px; font-weight:bold; border-top:1px solid #000; padding-top:10px; margin-top:10px;">${f1}</div>`;
+        if(f2) footerLarge += `<div style="text-align:center; font-size:12px; margin-top:4px;">${f2}</div>`;
+        if(f3) footerLarge += `<div style="text-align:center; font-size:12px; margin-top:4px;">${f3}</div>`;
 
         printArea.innerHTML = `
-            <div style="padding: 10px; border: 1px solid #000; border-radius: 8px; max-width: 95%; margin: 0 auto; box-sizing:border-box;">
+            <div style="padding: 15px; border: 1px solid #000; border-radius: 8px; max-width: 95%; margin: 0 auto; box-sizing:border-box;">
                 ${headerLarge}
-                <div style="text-align:center; font-weight:bold; font-size:14px; margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid #000;">${title}</div>
-                <div style="font-size:10px; line-height:1.3;">${contentHtml}</div>
-                <div style="font-size:11px; margin-top:8px; border-top:1px dashed #000; padding-top:8px;">${totalHtml}</div>
+                <div style="text-align:center; font-weight:bold; font-size:18px; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #000;">${title}</div>
+                <div style="font-size:13px; line-height:1.4;">${contentHtml}</div>
+                <div style="font-size:14px; margin-top:12px; border-top:1px dashed #000; padding-top:12px;">${totalHtml}</div>
                 ${footerLarge}
             </div>
         `;
@@ -215,43 +215,43 @@ window.printShiftStandard = function(shiftId) {
         });
     }
 
-    // 🎨 Layout Ultra-Compact (Font lebih kecil & Padding dihilangkan agar muat 1 halaman)
-    let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:10px; margin-top:5px;">`;
+    // 🎨 Layout dengan font yang lebih besar (13px - 14px)
+    let itemsHtml = `<table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:8px;">`;
     if (Object.keys(parseItems).length > 0) {
         for (const loc in parseItems) {
-            itemsHtml += `<tr><td colspan="2" style="font-weight:bold; color:#000; padding-top:6px; border-bottom:1px solid #aaa;">📍 ${loc.toUpperCase()}</td></tr>`;
+            itemsHtml += `<tr><td colspan="2" style="font-weight:bold; color:#000; padding-top:8px; border-bottom:1px solid #aaa; font-size:14px;">📍 ${loc.toUpperCase()}</td></tr>`;
             for (const cat in parseItems[loc]) {
-                itemsHtml += `<tr><td colspan="2" style="font-weight:bold; font-style:italic; color:#555; padding-top:3px; padding-left:5px;">📁 ${cat}</td></tr>`;
+                itemsHtml += `<tr><td colspan="2" style="font-weight:bold; font-style:italic; color:#555; padding-top:4px; padding-left:5px;">📁 ${cat}</td></tr>`;
                 for (const item in parseItems[loc][cat]) {
                     let qtyStr = parseItems[loc][cat][item];
                     if (!String(qtyStr).endsWith('x')) qtyStr += 'x';
                     itemsHtml += `<tr>
-                        <td style="padding:2px 0 2px 15px; border-bottom:1px dashed #eee;">${item}</td>
+                        <td style="padding:3px 0 3px 15px; border-bottom:1px dashed #eee;">${item}</td>
                         <td style="text-align:right; font-weight:bold; border-bottom:1px dashed #eee;">${qtyStr}</td>
                     </tr>`;
                 }
             }
         }
     } else {
-        itemsHtml += `<tr><td style="text-align:center; color:#888;">Belum ada item terjual</td></tr>`;
+        itemsHtml += `<tr><td style="text-align:center; color:#888; padding:5px;">Belum ada item terjual</td></tr>`;
     }
     itemsHtml += `</table>`;
 
     let content = `
-        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;"><b>Shift:</b> <span>${s.shiftId}</span></div>
-        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;"><b>Kasir:</b> <span>${s.cashier}</span></div>
-        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;"><b>Masuk:</b> <span>${formatWIB(s.loginTime)}</span></div>
-        <div style="display:flex; justify-content:space-between; font-size:11px; border-bottom:1px solid #000; padding-bottom:5px; margin-bottom:5px;"><b>Keluar:</b> <span>${formatWIB(s.logoutTime)}</span></div>
-        <div style="font-weight:bold; font-size:12px; margin-top:5px; color:#2c3e50;">Rincian Item Terjual:</div>
+        <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px;"><b>Shift:</b> <span>${s.shiftId}</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px;"><b>Kasir:</b> <span>${s.cashier}</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:14px; margin-bottom:4px;"><b>Masuk:</b> <span>${formatWIB(s.loginTime)}</span></div>
+        <div style="display:flex; justify-content:space-between; font-size:14px; border-bottom:1px solid #000; padding-bottom:8px; margin-bottom:8px;"><b>Keluar:</b> <span>${formatWIB(s.logoutTime)}</span></div>
+        <div style="font-weight:bold; font-size:15px; margin-top:8px; color:#2c3e50;">Rincian Item Terjual:</div>
         ${itemsHtml}
     `;
     
     let total = `
-        <table style="width:100%; border-collapse:collapse; font-size:11px;">
-            <tr><td style="padding:2px 0;">Omset Laundry</td><td style="text-align:right; font-weight:bold;">Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}</td></tr>
-            <tr><td style="padding:2px 0; border-bottom:1px solid #aaa;">Omset Hotel</td><td style="text-align:right; font-weight:bold; border-bottom:1px solid #aaa;">Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}</td></tr>
-            <tr><td style="padding:5px 0 2px 0;">Netto Laci Laundry</td><td style="text-align:right; font-weight:bold; color:#27ae60; padding-top:5px;">Rp ${(s.netLaundry||0).toLocaleString('id-ID')}</td></tr>
-            <tr><td style="padding:2px 0;">Netto Laci Hotel</td><td style="text-align:right; font-weight:bold; color:#27ae60;">Rp ${(s.netHotel||0).toLocaleString('id-ID')}</td></tr>
+        <table style="width:100%; border-collapse:collapse; font-size:14px;">
+            <tr><td style="padding:4px 0;">Omset Laundry</td><td style="text-align:right; font-weight:bold;">Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:4px 0; border-bottom:1px solid #aaa;">Omset Hotel</td><td style="text-align:right; font-weight:bold; border-bottom:1px solid #aaa;">Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:8px 0 4px 0;">Netto Laci Laundry</td><td style="text-align:right; font-weight:bold; color:#27ae60; padding-top:8px;">Rp ${(s.netLaundry||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:4px 0;">Netto Laci Hotel</td><td style="text-align:right; font-weight:bold; color:#27ae60;">Rp ${(s.netHotel||0).toLocaleString('id-ID')}</td></tr>
         </table>
     `;
     window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "single");
