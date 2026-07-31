@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbykTybIX-9YVGytTKeCBbDdpU9ihP3lbYFaAEBJQA0iE7uaPpI7Te1U568pZdTian_-mw/exec"; // REPLACE THIS
+const API_URL = "https://script.google.com/macros/s/AKfycbwRh5xnbogjZs00dseVC0aavo8EUj9msaWH8ZhQ92yLWOpkR-GC7tkmmD29H2xZUR8Xww/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
 const DB_VERSION = 5; 
 let db;
@@ -2324,10 +2324,15 @@ window.openShiftReport = async function() {
     
     let btn = document.getElementById("btn-shift-top");
     let originalText = btn ? btn.innerText : "📊 Shift";
-    if (btn) btn.innerText = "⏳ Sinkronisasi...";
     
-    await window.runBackgroundSync();
-    await window.syncMasterData(true);
+    // 1. FORCE FULL SYNC JIKA ONLINE
+    if (navigator.onLine) {
+        if (btn) btn.innerText = "⏳ Menarik Data Server...";
+        await window.runBackgroundSync(); // Dorong data offline ke server
+        await window.syncMasterData(true); // Tarik 800 transaksi terakhir dari server
+    } else {
+        alert("⚠️ Anda sedang offline. Laporan shift hanya akan dihitung berdasarkan memori lokal perangkat ini.");
+    }
     
     if (btn) btn.innerText = originalText;
 
@@ -2335,36 +2340,32 @@ window.openShiftReport = async function() {
     let localExpenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
     let localDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
 
-    // ✅ BULLETPROOF FIX: Combine Google Sheet memory with Local Memory
+    // 2. MERGE SERVER DATA + LOCAL DATA (Mencegah data hilang jika ganti device/clear cache)
     let allOrdersMap = new Map();
-    
-    // 1. Put Server Data in first
-    (window.globalRecentOrders || []).forEach(so => {
-        allOrdersMap.set(so.orderId, so);
-    });
-    
-    // 2. Overwrite with Local Data (since it has the newest unsynced changes)
+    (window.globalRecentOrders || []).forEach(so => allOrdersMap.set(so.orderId, so));
     localOrders.forEach(lo => {
         let existing = allOrdersMap.get(lo.orderId);
-        if (existing) {
-            lo.orderStatus = existing.orderStatus; // Sync status with server (e.g., if Admin voided it)
-        }
+        if (existing) lo.orderStatus = existing.orderStatus; // Ambil status asli dari server (jika di-void admin)
         allOrdersMap.set(lo.orderId, lo);
     });
-
     let combinedOrders = Array.from(allOrdersMap.values());
-
-    // 3. Filter using the combined list
     let shiftOrders = combinedOrders.filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
 
+    let allExpMap = new Map();
+    (window.globalRecentExpenses || []).forEach(se => allExpMap.set(se.expenseId, se));
     localExpenses.forEach(le => {
-        let serverExp = (window.globalRecentExpenses || []).find(se => se.expenseId === le.expenseId);
-        if (serverExp) le.status = serverExp.status;
+        let existing = allExpMap.get(le.expenseId);
+        if (existing) le.status = existing.status;
+        allExpMap.set(le.expenseId, le);
     });
+    let shiftExpenses = Array.from(allExpMap.values()).filter(e => e.shiftId === currentShiftId && e.status !== "Voided" && e.status !== "Void Pending");
 
-    let shiftExpenses = localExpenses.filter(e => e.shiftId === currentShiftId && e.status !== "Voided" && e.status !== "Void Pending");
-    let shiftDrops = localDrops.filter(d => d.shiftId === currentShiftId);
+    let allDropsMap = new Map();
+    (window.globalRecentDrops || []).forEach(sd => allDropsMap.set(sd.dropId, sd));
+    localDrops.forEach(ld => allDropsMap.set(ld.dropId, ld));
+    let shiftDrops = Array.from(allDropsMap.values()).filter(d => d.shiftId === currentShiftId);
     
+    // 3. KALKULASI LAPORAN
     let tOrders = 0; let tFree = 0; let omsetL = 0; let omsetH = 0; let cashL = 0; let cashH = 0; let qrisL = 0; let transferH = 0;
     let foodSummary = {};
     
