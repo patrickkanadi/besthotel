@@ -2325,22 +2325,25 @@ window.openShiftReport = async function() {
     let btn = document.getElementById("btn-shift-top");
     let originalText = btn ? btn.innerText : "📊 Shift";
     
-    // 1. FORCE FULL SYNC JIKA ONLINE
+    // 1. JALANKAN SYNC DI BACKGROUND TANPA AWAIT (TIDAK MEMBEKUKAN LAYAR)
     if (navigator.onLine) {
-        if (btn) btn.innerText = "⏳ Menarik Data Server...";
-        await window.runBackgroundSync(); // Dorong data offline ke server
-        await window.syncMasterData(true); // Tarik 800 transaksi terakhir dari server
+        if (btn) btn.innerText = "⏳ Syncing...";
+        // Jangan pakai await di sini, biarkan dia berjalan di belakang layar!
+        window.runBackgroundSync().then(() => {
+            return window.syncMasterData(false);
+        }).finally(() => {
+            if (btn) btn.innerText = originalText;
+        });
     } else {
-        alert("⚠️ Anda sedang offline. Laporan shift hanya akan dihitung berdasarkan memori lokal perangkat ini.");
+        alert("⚠️ Anda sedang offline. Laporan shift dihitung berdasarkan memori lokal.");
     }
-    
-    if (btn) btn.innerText = originalText;
 
+    // 2. INSTAN: AMBIL DATA LOKAL DARI INDEXED DB
     let localOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
     let localExpenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
     let localDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
 
-    // 2. MERGE SERVER DATA + LOCAL DATA (Mencegah data hilang jika ganti device/clear cache)
+    // 3. MERGE SERVER DATA + LOCAL DATA (Akurat & Cepat!)
     let allOrdersMap = new Map();
     (window.globalRecentOrders || []).forEach(so => allOrdersMap.set(so.orderId, so));
     localOrders.forEach(lo => {
@@ -2365,7 +2368,7 @@ window.openShiftReport = async function() {
     localDrops.forEach(ld => allDropsMap.set(ld.dropId, ld));
     let shiftDrops = Array.from(allDropsMap.values()).filter(d => d.shiftId === currentShiftId);
     
-    // 3. KALKULASI LAPORAN
+    // 4. KALKULASI LAPORAN
     let tOrders = 0; let tFree = 0; let omsetL = 0; let omsetH = 0; let cashL = 0; let cashH = 0; let qrisL = 0; let transferH = 0;
     let foodSummary = {};
     
@@ -2411,6 +2414,7 @@ window.openShiftReport = async function() {
         netLaundry: netL, netHotel: netH, foodSummary: foodSummary
     };
     
+    // 5. UPDATE TAMPILAN UI
     if (document.getElementById("sr-orders")) document.getElementById("sr-orders").innerText = tOrders;
     if (document.getElementById("sr-omset-laundry")) document.getElementById("sr-omset-laundry").innerText = "Rp " + omsetL.toLocaleString('id-ID');
     if (document.getElementById("sr-omset-hotel")) document.getElementById("sr-omset-hotel").innerText = "Rp " + omsetH.toLocaleString('id-ID');
