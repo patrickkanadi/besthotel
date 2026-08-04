@@ -836,6 +836,7 @@ window.attemptLogin = async function() {
         const hashedPin = await hashString(rawPin);
         let staff = await new Promise(res => db.transaction(["staff"], "readonly").objectStore("staff").get(hashedPin).onsuccess = e => res(e.target.result));
         
+        // 1. Ambil data staff dari server jika belum ada di lokal
         if (!staff && navigator.onLine) {
             if(loginBtn) loginBtn.innerText = "Memverifikasi (Cepat)...";
             const response = await fetch(API_URL, { method: 'POST', mode: 'cors', body: JSON.stringify({ action: "syncStaff" }) });
@@ -852,13 +853,37 @@ window.attemptLogin = async function() {
         }
 
         if (staff) {
+            currentCashier = staff.name; currentPin = hashedPin;
+            
+            // ========================================================
+            // FIX: DETERMINISTIC SHIFT ID (MULTI-COMPUTER SYNC)
+            // Menggabungkan shift di 2 komputer menjadi 1 ID yang sama
+            // ========================================================
+            let now = new Date();
+            let dateCode = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+            let safeName = currentCashier.substring(0, 5).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+            let baseShiftId = `SHF-${safeName}-${dateCode}`;
+            
+            // Cek di server, sudah berapa kali kasir ini tutup shift hari ini?
+            let closedCount = (window.globalRecentShifts || []).filter(s => s.cashier === currentCashier && s.shiftId.startsWith(baseShiftId)).length;
+            let expectedShiftId = `${baseShiftId}-${closedCount + 1}`;
+
             db.transaction(["active_shifts"], "readonly").objectStore("active_shifts").get(hashedPin).onsuccess = (shiftReq) => {
-                const activeShift = shiftReq.target.result; currentCashier = staff.name; currentPin = hashedPin;
-                if (activeShift) { currentShiftId = activeShift.shiftId; currentLoginTime = activeShift.loginTime; } 
-                else {
-                    currentShiftId = "SHF-" + Date.now(); currentLoginTime = new Date().toISOString(); 
-                    db.transaction(["active_shifts"], "readwrite").objectStore("active_shifts").put({pin: hashedPin, shiftId: currentShiftId, loginTime: currentLoginTime, lastActiveTime: Date.now(), cashierName: currentCashier}); 
+                const activeShift = shiftReq.target.result; 
+                
+                // Paksa kedua komputer menggunakan Shift ID yang sama
+                currentShiftId = expectedShiftId; 
+                
+                // Jika ID shift sama dengan lokal, pertahankan waktu login asli. Jika tidak, buat waktu baru.
+                if (activeShift && activeShift.shiftId === expectedShiftId) {
+                    currentLoginTime = activeShift.loginTime; 
+                } else {
+                    currentLoginTime = now.toISOString(); 
                 }
+                
+                db.transaction(["active_shifts"], "readwrite").objectStore("active_shifts").put({
+                    pin: hashedPin, shiftId: currentShiftId, loginTime: currentLoginTime, lastActiveTime: Date.now(), cashierName: currentCashier
+                }); 
                 
                 document.getElementById("login-screen").classList.add("hidden");
                 document.getElementById("pos-screen").classList.remove("hidden");
