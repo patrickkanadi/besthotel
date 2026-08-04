@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyjJlZe-AJJB-G9YGdae3iImW7sC2bHmMGXcvICVrYqWrfg-jVW_5XwHeZvihFmSl9nKQ/exec"; // REPLACE THIS
+const API_URL = "https://script.google.com/macros/s/AKfycbx7IVO7PhlMz_HcPgXJawt1JMsH31D5t7yPY62m5p7crqT0CF1Fvn0-VLjY8Rjw3p1wAw/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
 const DB_VERSION = 5; 
 let db;
@@ -587,7 +587,9 @@ window.printSettlement = async function() {
     
     // Tembak Quick Update di background dengan menyertakan Nota untuk Kolom H
     fetch(API_URL, { 
-        method: 'POST', mode: 'cors', 
+        method: 'POST', 
+        redirect: 'follow',
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed", readableReceipt: ticket.readableReceipt }) 
     }).catch(e => console.log(e));
 
@@ -1433,7 +1435,9 @@ window.markTicketReady = function(orderId) {
             
             // 3. Tembak ke server di background ("Fire and Forget")
             fetch(API_URL, { 
-                method: 'POST', mode: 'cors', 
+                method: 'POST', 
+                redirect: 'follow',
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify({ action: "updateOrderStatus", orderId: orderId, status: "Ready for Pickup" }) 
             }).catch(e => console.log("Quick update failed", e));
             
@@ -1911,8 +1915,10 @@ window.submitEmergencyInbound = async function() {
     if (typeof window.showToast === 'function') window.showToast("⏳ Mengirim Data Inbound...");
 
     try {
-        const response = await fetch(`${API_URL}?action=emergencyInbound`, {
+        const response = await fetch(API_URL, {
             method: "POST",
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify(payload)
         });
         const result = await response.json();
@@ -2113,7 +2119,12 @@ window.runBackgroundSync = async function() {
                 // Proses jika statusnya Pending ATAU jika ini tipe data yang harus dihapus setelah dikirim
                 if (item.syncStatus === "Pending" || deleteOnSuccess) { 
                     try {
-                        let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: actionName, data: item }) });
+                        let r = await fetch(API_URL, { 
+                            method: 'POST', 
+                            redirect: 'follow',
+                            headers: { "Content-Type": "text/plain;charset=utf-8" },
+                            body: JSON.stringify({ action: actionName, data: item }) 
+                        });
                         let resData = await r.json();
                         
                         // HANYA tandai selesai JIKA server menjawab "Success"
