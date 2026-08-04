@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyqcK7vQG0AwkKRA6He5TyxzCPfOmLSsU4eEetyhFO9fD_TAU6BzpUxK1OpGv9xWdIh/exec"; // REPLACE THIS
+const API_URL = "https://script.google.com/macros/s/AKfycbzJF7yDBMFQ55FnyQ2iReuJUQJgfkSRIttwWmMllkuWVc4u_QwHi_2nuaejvkvAzHrnMQ/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
 const DB_VERSION = 5; 
 let db;
@@ -838,7 +838,7 @@ window.attemptLogin = async function() {
         
         if (!staff && navigator.onLine) {
             if(loginBtn) loginBtn.innerText = "Memverifikasi (Cepat)...";
-            const response = await fetch(`${API_URL}?action=syncStaff&t=${Date.now()}`, { method: 'GET' });
+            const response = await fetch(API_URL, { method: 'POST', mode: 'cors', body: JSON.stringify({ action: "syncStaff" }) });
             if (response.ok) {
                 const result = await response.json();
                 if (result.status === "Success" && result.data && result.data.staff) {
@@ -1904,7 +1904,7 @@ window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot");
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; }
     try {
-        const response = await fetch(`${API_URL}?t=${Date.now()}`, { method: 'GET', headers: { 'Accept': 'application/json' } }); 
+        const response = await fetch(API_URL, { method: 'POST', mode: 'cors', body: JSON.stringify({ action: "syncMasterData" }) });
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const result = await response.json();
         
