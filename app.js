@@ -2372,20 +2372,21 @@ window.openShiftReport = async function() {
     let btn = document.getElementById("btn-shift-top");
     let originalText = btn ? btn.innerText : "📊 Shift";
     
-    // 1. JALANKAN SYNC DI BACKGROUND TANPA AWAIT (TIDAK MEMBEKUKAN LAYAR)
     if (navigator.onLine) {
-        if (btn) btn.innerText = "⏳ Syncing...";
-        // Jangan pakai await di sini, biarkan dia berjalan di belakang layar!
-        window.runBackgroundSync().then(() => {
-            return window.syncMasterData(false);
-        }).finally(() => {
-            if (btn) btn.innerText = originalText;
-        });
+        if (btn) btn.innerText = "⏳ Mengambil Data...";
+        
+        // 1. Biarkan push berjalan di background tanpa membekukan layar
+        window.runBackgroundSync(); 
+        
+        // 2. TUNGGU proses pull selesai agar transaksi dari komputer lain masuk!
+        await window.syncMasterData(true); 
+        
+        if (btn) btn.innerText = originalText;
     } else {
         alert("⚠️ Anda sedang offline. Laporan shift dihitung berdasarkan memori lokal.");
     }
 
-    // 2. INSTAN: AMBIL DATA LOKAL DARI INDEXED DB
+    // 3. INSTAN: AMBIL DATA LOKAL DARI INDEXED DB
     let localOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
     let localExpenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
     let localDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
