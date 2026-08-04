@@ -840,7 +840,8 @@ window.attemptLogin = async function() {
             if(loginBtn) loginBtn.innerText = "Memverifikasi (Cepat)...";
             // ✅ FIX: Diubah menjadi POST agar tidak mencari doGet
             const response = await fetch(API_URL, { 
-                method: 'POST', mode: 'cors', 
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify({ action: "syncStaff" }) 
             });
             
@@ -1911,9 +1912,10 @@ window.syncMasterData = async function(forceAwait = false) {
     try {
         // ✅ FIX: Diubah menjadi POST agar tidak mencari doGet dan tidak terkena error 404
         const response = await fetch(API_URL, { 
-            method: 'POST', mode: 'cors', 
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: "syncMasterData" }) 
-        });
+        }); 
 
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const result = await response.json();
