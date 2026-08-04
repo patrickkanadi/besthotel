@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbx_2GpOO1G35AXKLntmFqt6v9puLOSh972idZT7t1fvEcmTNsePWpwymSEKS6BcmXqdAA/exec"; // REPLACE THIS
+const API_URL = "https://script.google.com/macros/s/AKfycbzyI4ADCdsnZTgMC-aUygI0UlR9LlBjMBFLfh1BdrrWNYtkasQ6wpHVlH8esGaWlNu1-w/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
 const DB_VERSION = 5; 
 let db;
@@ -838,12 +838,7 @@ window.attemptLogin = async function() {
         
         if (!staff && navigator.onLine) {
             if(loginBtn) loginBtn.innerText = "Memverifikasi (Cepat)...";
-            // ✅ FIX: Diubah menjadi POST agar tidak mencari doGet
-            const response = await fetch(API_URL, { 
-                method: 'POST',
-                body: JSON.stringify({ action: "syncStaff" }) 
-            });
-            
+            const response = await fetch(`${API_URL}?action=syncStaff&t=${Date.now()}`, { method: 'GET' });
             if (response.ok) {
                 const result = await response.json();
                 if (result.status === "Success" && result.data && result.data.staff) {
@@ -1909,13 +1904,7 @@ window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot");
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; }
     try {
-        // ✅ FIX: Diubah menjadi POST agar tidak mencari doGet dan tidak terkena error 404
-        const response = await fetch(API_URL, { 
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action: "syncMasterData" }) 
-        });
-
+        const response = await fetch(`${API_URL}?t=${Date.now()}`, { method: 'GET', headers: { 'Accept': 'application/json' } }); 
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const result = await response.json();
         
@@ -1943,12 +1932,14 @@ window.syncMasterData = async function(forceAwait = false) {
             let tabUnpaid = document.getElementById("tab-unpaid-orders");
             
             if(tabUnpaid) {
+                // Tampilkan tab JIKA fitur diaktifkan ATAU ada pelanggan yang masih menunggak
                 if(payLaterEnabled || hasUnpaid) tabUnpaid.classList.remove("hidden");
                 else tabUnpaid.classList.add("hidden");
             }
 
             window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
+            // ✅ FIX: Extract unsynced local orders to merge with server orders
             let localOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
             let pendingOrders = localOrders.filter(o => o.syncStatus === "Pending");
 
@@ -1982,6 +1973,7 @@ window.syncMasterData = async function(forceAwait = false) {
                     });
                     window.globalUnpaidOrders = serverUnpaid;
 
+                    // ✅ UPDATE THE BADGE NUMBER HERE
                     let tc = document.getElementById("ticket-count"); 
                     if(tc) tc.innerText = window.activeLaundryTickets.length;
                     
@@ -1995,7 +1987,7 @@ window.syncMasterData = async function(forceAwait = false) {
             });
             if(forceAwait) await p1; 
         }
-    } catch (e) { if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; console.error(e); }
+    } catch (e) { if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; }
 };
 
 window.extractUnpaidOrders = function() {
@@ -2074,10 +2066,7 @@ window.runBackgroundSync = async function() {
                 // Proses jika statusnya Pending ATAU jika ini tipe data yang harus dihapus setelah dikirim
                 if (item.syncStatus === "Pending" || deleteOnSuccess) { 
                     try {
-                        let r = await fetch(API_URL, { 
-                            method: 'POST', 
-                            body: JSON.stringify({ action: actionName, data: item }) 
-                        });
+                        let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: actionName, data: item }) });
                         let resData = await r.json();
                         
                         // HANYA tandai selesai JIKA server menjawab "Success"
@@ -2351,33 +2340,16 @@ window.openShiftReport = async function() {
     let localExpenses = await new Promise(res => db.transaction(["expenses"], "readonly").objectStore("expenses").getAll().onsuccess = e => res(e.target.result));
     let localDrops = await new Promise(res => db.transaction(["cash_drops"], "readonly").objectStore("cash_drops").getAll().onsuccess = e => res(e.target.result));
 
-    // 2. MERGE SERVER DATA + LOCAL DATA (Mencegah data hilang)
+    // 2. MERGE SERVER DATA + LOCAL DATA (Mencegah data hilang jika ganti device/clear cache)
     let allOrdersMap = new Map();
     (window.globalRecentOrders || []).forEach(so => allOrdersMap.set(so.orderId, so));
     localOrders.forEach(lo => {
         let existing = allOrdersMap.get(lo.orderId);
-        if (existing) lo.orderStatus = existing.orderStatus; 
+        if (existing) lo.orderStatus = existing.orderStatus; // Ambil status asli dari server (jika di-void admin)
         allOrdersMap.set(lo.orderId, lo);
     });
-    
     let combinedOrders = Array.from(allOrdersMap.values());
-    
-    // ✅ FALLBACK SAFETY NET: Jika shiftId hilang, gunakan waktu login sebagai patokan
-    let loginTimestamp = new Date(currentLoginTime).getTime();
-    
-    let shiftOrders = combinedOrders.filter(o => {
-        if (o.orderStatus === "Voided" || o.orderStatus === "Void Pending") return false;
-        
-        // Kondisi 1: Shift ID cocok persis (Normal behavior)
-        if (o.shiftId && o.shiftId === currentShiftId) return true;
-        
-        // Kondisi 2: Safety Net (Jika Shift ID kosong, tapi Kasir sama dan waktu transaksi setelah dia login)
-        if (!o.shiftId && o.cashier === currentCashier) {
-            let txTime = new Date(o.timestamp).getTime();
-            if (txTime >= loginTimestamp) return true;
-        }
-        return false;
-    });
+    let shiftOrders = combinedOrders.filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
 
     let allExpMap = new Map();
     (window.globalRecentExpenses || []).forEach(se => allExpMap.set(se.expenseId, se));
@@ -2386,23 +2358,12 @@ window.openShiftReport = async function() {
         if (existing) le.status = existing.status;
         allExpMap.set(le.expenseId, le);
     });
-    
-    let shiftExpenses = Array.from(allExpMap.values()).filter(e => {
-        if (e.status === "Voided" || e.status === "Void Pending") return false;
-        if (e.shiftId && e.shiftId === currentShiftId) return true;
-        if (!e.shiftId && e.cashier === currentCashier && new Date(e.timestamp).getTime() >= loginTimestamp) return true;
-        return false;
-    });
+    let shiftExpenses = Array.from(allExpMap.values()).filter(e => e.shiftId === currentShiftId && e.status !== "Voided" && e.status !== "Void Pending");
 
     let allDropsMap = new Map();
     (window.globalRecentDrops || []).forEach(sd => allDropsMap.set(sd.dropId, sd));
     localDrops.forEach(ld => allDropsMap.set(ld.dropId, ld));
-    
-    let shiftDrops = Array.from(allDropsMap.values()).filter(d => {
-        if (d.shiftId && d.shiftId === currentShiftId) return true;
-        if (!d.shiftId && d.cashier === currentCashier && new Date(d.timestamp).getTime() >= loginTimestamp) return true;
-        return false;
-    });
+    let shiftDrops = Array.from(allDropsMap.values()).filter(d => d.shiftId === currentShiftId);
     
     // 3. KALKULASI LAPORAN
     let tOrders = 0; let tFree = 0; let omsetL = 0; let omsetH = 0; let cashL = 0; let cashH = 0; let qrisL = 0; let transferH = 0;
