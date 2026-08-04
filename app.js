@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbzG7tPcev_abTgy8ylHLSksnysQHHmSYF6taVxW5CFKB0JBC7ZgGxgrgWsNODYyI8bNpQ/exec"; // REPLACE THIS
+const API_URL = "https://script.google.com/macros/s/AKfycbx_2GpOO1G35AXKLntmFqt6v9puLOSh972idZT7t1fvEcmTNsePWpwymSEKS6BcmXqdAA/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
 const DB_VERSION = 5; 
 let db;
@@ -1912,6 +1912,7 @@ window.syncMasterData = async function(forceAwait = false) {
         // ✅ FIX: Diubah menjadi POST agar tidak mencari doGet dan tidak terkena error 404
         const response = await fetch(API_URL, { 
             method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: "syncMasterData" }) 
         });
 
