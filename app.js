@@ -840,6 +840,10 @@ window.attemptLogin = async function() {
             if(loginBtn) loginBtn.innerText = "Memverifikasi (Cepat)...";
             const response = await fetch(API_URL, { 
                 method: 'POST', 
+                redirect: 'follow', // Forces browser to follow the 302 redirect
+                headers: {
+                    "Content-Type": "text/plain;charset=utf-8" // Bypasses strict CORS preflight
+                },
                 body: JSON.stringify({ action: "syncStaff" }) 
             });
             if (response.ok) {
@@ -1931,6 +1935,10 @@ window.syncMasterData = async function(forceAwait = false) {
     try {
         const response = await fetch(API_URL, { 
             method: 'POST', 
+            redirect: 'follow', // Forces browser to follow the 302 redirect
+            headers: {
+                "Content-Type": "text/plain;charset=utf-8" // Bypasses strict CORS preflight
+            },
             body: JSON.stringify({ action: "syncMasterData" }) 
         });
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
