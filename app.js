@@ -1904,10 +1904,7 @@ window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot");
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; }
     try {
-        const response = await fetch(`${API_URL}?t=${Date.now()}`, { 
-            method: 'GET', 
-            redirect: 'follow' 
-        });
+        const response = await fetch(`${API_URL}?t=${Date.now()}`);
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const result = await response.json();
         
