@@ -841,7 +841,6 @@ window.attemptLogin = async function() {
             // ✅ FIX: Diubah menjadi POST agar tidak mencari doGet
             const response = await fetch(API_URL, { 
                 method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify({ action: "syncStaff" }) 
             });
             
@@ -1913,9 +1912,8 @@ window.syncMasterData = async function(forceAwait = false) {
         // ✅ FIX: Diubah menjadi POST agar tidak mencari doGet dan tidak terkena error 404
         const response = await fetch(API_URL, { 
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: "syncMasterData" }) 
-        }); 
+        });
 
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         const result = await response.json();
@@ -2075,7 +2073,10 @@ window.runBackgroundSync = async function() {
                 // Proses jika statusnya Pending ATAU jika ini tipe data yang harus dihapus setelah dikirim
                 if (item.syncStatus === "Pending" || deleteOnSuccess) { 
                     try {
-                        let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: actionName, data: item }) });
+                        let r = await fetch(API_URL, { 
+                            method: 'POST', 
+                            body: JSON.stringify({ action: actionName, data: item }) 
+                        });
                         let resData = await r.json();
                         
                         // HANYA tandai selesai JIKA server menjawab "Success"
