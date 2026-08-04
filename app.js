@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbywEjzEjrywW6BooFWln0-fhAHX3RwULuGw8qyG4GIINcLc5CQdbgTQAwGHWEeOxKR1Sg/exec"; // REPLACE THIS
+const API_URL = "https://script.google.com/macros/s/AKfycbyjJlZe-AJJB-G9YGdae3iImW7sC2bHmMGXcvICVrYqWrfg-jVW_5XwHeZvihFmSl9nKQ/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
 const DB_VERSION = 5; 
 let db;
@@ -2427,11 +2427,11 @@ window.openShiftReport = async function() {
         
         let orderOmsetL = 0; let orderOmsetH = 0;
         
-        // JIKA ORDER DIBUAT LOKAL (Memiliki data array Items)
-        if (o.items && o.items.length > 0) {
+        // KARENA KITA SUDAH PAKAI JSON DI KOLOM S, SEMUA ORDER PASTI PUNYA o.items
+        if (o.items && Array.isArray(o.items) && o.items.length > 0) {
             o.items.forEach(i => { 
                 let lineTotal = i.qty * (Number(i.price) || Number(i.originalPrice) || 0);
-                if(i.location && i.location.toLowerCase().includes('laundry')) orderOmsetL += lineTotal;
+                if(i.location && String(i.location).toLowerCase().includes('laundry')) orderOmsetL += lineTotal;
                 else orderOmsetH += lineTotal;
                 
                 let loc = i.location || "Lainnya"; let cat = i.category || "Lainnya";
@@ -2439,61 +2439,9 @@ window.openShiftReport = async function() {
                 if(!foodSummary[loc][cat]) foodSummary[loc][cat] = {};
                 foodSummary[loc][cat][i.name] = (foodSummary[loc][cat][i.name] || 0) + i.qty;
             });
-        } 
-        // JIKA ORDER DI-DOWNLOAD DARI SERVER (Hanya memiliki text nota)
-        else if (o.readableReceipt) {
-            let lines = o.readableReceipt.split('\n');
-            lines.forEach(line => {
-                // Bersihkan text dari karakter bullet point
-                let cleanLine = line.replace(/^[•\-\*]\s*/, '').trim();
-                if (!cleanLine) return;
-
-                // Ambil Jumlah QTY (Misal: "1.5x" atau "2x")
-                let qtyMatch = cleanLine.match(/^([\d.]+)[xX]\s+/i);
-                if (qtyMatch) {
-                    let qty = parseFloat(qtyMatch[1]);
-                    let remainder = cleanLine.substring(qtyMatch[0].length).trim();
-
-                    // Ambil Harga Total (Misal: "(Rp 50.000)")
-                    let priceMatch = remainder.match(/\(Rp\s*([\d.,]+)\)/i);
-                    let lineTotal = 0;
-                    if (priceMatch) {
-                        lineTotal = Number(priceMatch[1].replace(/\./g, ''));
-                        remainder = remainder.replace(priceMatch[0], '').trim();
-                    }
-
-                    // Ambil Lokasi (Misal: "[L]" atau "[H]")
-                    let locMatch = remainder.match(/\[([LH])\]/i);
-                    let locMark = null;
-                    if (locMatch) {
-                        locMark = locMatch[1].toUpperCase();
-                        remainder = remainder.replace(locMatch[0], '').trim();
-                    }
-
-                    let rawName = remainder.trim();
-                    
-                    // Coba cari data asli item di Menu Master
-                    let mItem = window.globalMenuData ? window.globalMenuData.find(m => m.name === rawName) : null;
-                    let locName = mItem ? mItem.location : (locMark === 'L' ? 'Laundry' : 'Hotel');
-                    let catName = mItem ? mItem.category : 'Lainnya';
-                    let isLaundry = locName.toLowerCase().includes('laundry') || locMark === 'L';
-
-                    // Jika gagal parsing harga, ambil dari database
-                    if (lineTotal === 0 && mItem) lineTotal = qty * (Number(mItem.price) || 0);
-
-                    if (isLaundry) orderOmsetL += lineTotal;
-                    else orderOmsetH += lineTotal;
-
-                    if(!foodSummary[locName]) foodSummary[locName] = {};
-                    if(!foodSummary[locName][catName]) foodSummary[locName][catName] = {};
-                    foodSummary[locName][catName][rawName] = (foodSummary[locName][catName][rawName] || 0) + qty;
-                }
-            });
-            
-            // Fallback darurat jika struk gagal dibaca sempurna
-            if (orderOmsetL === 0 && orderOmsetH === 0 && o.subtotal > 0) {
-                 orderOmsetH = o.subtotal; 
-            }
+        } else {
+            // Jaga-jaga jika ada transaksi lama (sebelum update JSON ini)
+            orderOmsetH += o.subtotal;
         }
         
         omsetL += orderOmsetL; omsetH += orderOmsetH;
