@@ -1939,22 +1939,18 @@ window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot");
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; }
     try {
-        // ✅ STRICT FETCH 
         const response = await fetch(API_URL, { 
             method: 'POST', 
-            redirect: 'follow', 
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            redirect: 'follow', // Forces browser to follow the 302 redirect
+            headers: {
+                "Content-Type": "text/plain;charset=utf-8" // Bypasses strict CORS preflight
+            },
             body: JSON.stringify({ action: "syncMasterData" }) 
         });
-        
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+        const result = await response.json();
         
-        // ✅ SAFE JSON PARSING
-        const rawText = await response.text();
-        let result;
-        try { result = JSON.parse(rawText); } catch(err) { throw new Error("Invalid JSON Google Response"); }
-        
-        if (result && result.status === "Success") {
+        if (result.status === "Success") {
             window.masterDrawerBalanceLaundry = result.masterDrawerBalanceLaundry || 0;
             window.masterDrawerBalanceHotel = result.masterDrawerBalanceHotel || 0;
             window.globalRecentOrders = result.data.recentOrders || [];
@@ -1965,14 +1961,18 @@ window.syncMasterData = async function(forceAwait = false) {
             
             window.globalSettings = result.data.settings || {};
 
+            // ===========================================================
+            // DETEKSI PENUTUPAN SHIFT DARI KOMPUTER LAIN (MULTI-DEVICE)
+            // ===========================================================
             if (typeof currentShiftId !== 'undefined' && currentShiftId !== "") {
+                // Cek apakah Shift ID kita saat ini sudah masuk ke daftar Shift yang ditutup di server
                 let isShiftClosed = window.globalRecentShifts.some(s => s.shiftId === currentShiftId);
                 if (isShiftClosed) {
                     db.transaction(["active_shifts"], "readwrite").objectStore("active_shifts").delete(currentPin).onsuccess = () => {
                         alert("ℹ️ Shift ini telah ditutup dari perangkat lain. Anda akan logout secara otomatis.");
                         window.location.reload();
                     };
-                    return; 
+                    return; // Hentikan eksekusi script agar UI tidak bug
                 }
             }
             
@@ -2040,11 +2040,7 @@ window.syncMasterData = async function(forceAwait = false) {
             });
             if(forceAwait) await p1; 
         }
-    } catch (e) { 
-        if(nTxt) nTxt.innerText = "Gagal Sinkron"; 
-        if(nDot) nDot.style.backgroundColor = "#e74c3c"; 
-        console.error("SyncMasterData Error:", e.message);
-    }
+    } catch (e) { if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; }
 };
 
 window.extractUnpaidOrders = function() {
@@ -2104,44 +2100,35 @@ window.manualPushSync = async function() {
     
     if (btn) btn.innerHTML = "⏳ Syncing...";
     
-    try {
-        await window.runBackgroundSync(); 
-        await window.syncMasterData(true); 
-        
-        if (btn) btn.innerHTML = originalText;
-        alert("Sinkronisasi Database Berhasil!"); 
-    } catch (e) {
-        if (btn) btn.innerHTML = originalText;
-        alert("⚠️ Sinkronisasi tidak sempurna. Periksa koneksi internet Anda.");
-    }
+    await window.runBackgroundSync(); 
+    await window.syncMasterData(true); 
+    
+    if (btn) btn.innerHTML = originalText;
+    alert("Sinkronisasi Database Berhasil!"); 
 };
 
 window.runBackgroundSync = async function() {
     if (!navigator.onLine || isSyncing) return; 
     isSyncing = true; 
     try {
+        // Fungsi helper cerdas untuk memproses setiap antrean data
         const syncItem = async (storeName, actionName, idField, deleteOnSuccess = false) => {
             let items = await new Promise(res => db.transaction([storeName], "readonly").objectStore(storeName).getAll().onsuccess = e => res(e.target.result));
             
             for (const item of items) {
+                // Proses jika statusnya Pending ATAU jika ini tipe data yang harus dihapus setelah dikirim
                 if (item.syncStatus === "Pending" || deleteOnSuccess) { 
                     try {
-                        // ✅ STRICT FETCH 
                         let r = await fetch(API_URL, { 
                             method: 'POST', 
                             redirect: 'follow',
                             headers: { "Content-Type": "text/plain;charset=utf-8" },
                             body: JSON.stringify({ action: actionName, data: item }) 
                         });
+                        let resData = await r.json();
                         
-                        if (!r.ok) throw new Error("Network Drop");
-                        
-                        // ✅ SAFE JSON PARSING
-                        let rawText = await r.text();
-                        let resData;
-                        try { resData = JSON.parse(rawText); } catch(err) { throw new Error("Invalid JSON Google Response"); }
-                        
-                        if (resData && resData.status === "Success") {
+                        // HANYA tandai selesai JIKA server menjawab "Success"
+                        if (resData.status === "Success") {
                             if (deleteOnSuccess) {
                                 db.transaction([storeName], "readwrite").objectStore(storeName).delete(item[idField]);
                             } else {
@@ -2150,12 +2137,13 @@ window.runBackgroundSync = async function() {
                             }
                         }
                     } catch(e) {
-                        console.error("Gagal sinkronisasi antrean:", storeName, e.message);
+                        console.error("Gagal sinkronisasi antrean:", storeName, e);
                     }
                 }
             }
         };
 
+        // Eksekusi semua antrean secara berurutan
         await syncItem("orders", "syncOrder", "orderId");
         await syncItem("expenses", "syncExpense", "expenseId");
         await syncItem("cash_drops", "syncCashDrop", "dropId", true);
