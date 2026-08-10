@@ -1983,6 +1983,16 @@ window.syncMasterData = async function(forceAwait = false) {
                 else btnEmg.classList.add("hidden");
             }
 
+            // ===========================================================
+            // ✅ TOGGLE STOCK OPNAME BUTTON
+            // ===========================================================
+            let enableOpname = String(window.globalSettings["Enable_Stock_Opname"]).toUpperCase() !== "FALSE";
+            let btnOpname = document.getElementById("btn-opname");
+            if (btnOpname) {
+                if (enableOpname) btnOpname.classList.remove("hidden");
+                else btnOpname.classList.add("hidden");
+            }
+
             let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
             let hasUnpaid = window.globalUnpaidOrders && window.globalUnpaidOrders.length > 0;
             let tabUnpaid = document.getElementById("tab-unpaid-orders");
