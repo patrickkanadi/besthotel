@@ -838,18 +838,22 @@ window.attemptLogin = async function() {
         const hashedPin = await hashString(rawPin);
         let staff = await new Promise(res => db.transaction(["staff"], "readonly").objectStore("staff").get(hashedPin).onsuccess = e => res(e.target.result));
         
+        // 1. Ambil data staff dari server jika belum ada di lokal
         if (!staff && navigator.onLine) {
             if(loginBtn) loginBtn.innerText = "Memverifikasi (Cepat)...";
+            
+            // ✅ THE FIX: Changed GET to POST with the strict anti-404 headers
             const response = await fetch(API_URL, { 
                 method: 'POST', 
-                redirect: 'follow', // Forces browser to follow the 302 redirect
-                headers: {
-                    "Content-Type": "text/plain;charset=utf-8" // Bypasses strict CORS preflight
-                },
+                redirect: 'follow',
+                headers: { "Content-Type": "text/plain;charset=utf-8" },
                 body: JSON.stringify({ action: "syncStaff" }) 
             });
+            
             if (response.ok) {
-                const result = await response.json();
+                const rawText = await response.text();
+                const result = JSON.parse(rawText); // Safely parse the text now
+                
                 if (result.status === "Success" && result.data && result.data.staff) {
                     let txFast = db.transaction(["staff"], "readwrite");
                     txFast.objectStore("staff").clear();
