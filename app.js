@@ -838,29 +838,15 @@ window.attemptLogin = async function() {
         const hashedPin = await hashString(rawPin); 
         let staff = await new Promise(res => db.transaction(["staff"], "readonly").objectStore("staff").get(hashedPin).onsuccess = e => res(e.target.result)); 
         
+        // 1. Ambil data staff dari server jika belum ada di lokal
         if (!staff && navigator.onLine) { 
             if(loginBtn) loginBtn.innerText = "Memverifikasi (Cepat)..."; 
             
-            // ✅ FIX: Gunakan POST & Header text/plain untuk melewati blokir CORS Google
-            const response = await fetch(API_URL, { 
-                method: 'POST', 
-                redirect: 'follow',
-                headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({ action: "syncStaff" }) 
-            }); 
+            // Cukup panggil syncInit yang sangat ringan!
+            await window.syncInit(); 
             
-            if (response.ok) { 
-                const rawText = await response.text();
-                const result = JSON.parse(rawText);
-                
-                if (result.status === "Success" && result.data && result.data.staff) { 
-                    let txFast = db.transaction(["staff"], "readwrite"); 
-                    txFast.objectStore("staff").clear(); 
-                    result.data.staff.forEach(s => txFast.objectStore("staff").put(s));  
-                    await new Promise(r => txFast.oncomplete = r); 
-                    staff = result.data.staff.find(s => s.pin === hashedPin); 
-                } 
-            } 
+            // Coba ambil lagi dari DB lokal
+            staff = await new Promise(res => db.transaction(["staff"], "readonly").objectStore("staff").get(hashedPin).onsuccess = e => res(e.target.result)); 
         }
 
         if (staff) { 
@@ -1945,6 +1931,50 @@ window.submitEmergencyInbound = async function() {
     }
 };
 
+// ========================================================
+// FAST INIT: Hanya tarik PIN dan Settings agar bisa login instan
+// ========================================================
+window.syncInit = async function() {
+    if (!navigator.onLine) return;
+    try {
+        const response = await fetch(API_URL, { 
+            method: 'POST', redirect: 'follow', headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ action: "syncInit" }) 
+        });
+        const rawText = await response.text();
+        const result = JSON.parse(rawText);
+        
+        if (result.status === "Success") {
+            // 1. Terapkan Settings Langsung
+            window.globalSettings = result.data.settings || {};
+            window.masterDrawerBalanceLaundry = result.data.masterDrawerBalanceLaundry || 0;
+            window.masterDrawerBalanceHotel = result.data.masterDrawerBalanceHotel || 0;
+
+            let enableEmgInbound = String(window.globalSettings["Enable_Emergency_Inbound"]).toUpperCase() !== "FALSE";
+            let btnEmg = document.getElementById("btn-emergency-inbound");
+            if (btnEmg) { if (enableEmgInbound) btnEmg.classList.remove("hidden"); else btnEmg.classList.add("hidden"); }
+
+            let enableOpname = String(window.globalSettings["Enable_Stock_Opname"]).toUpperCase() !== "FALSE";
+            let btnOpname = document.getElementById("btn-opname");
+            if (btnOpname) { if (enableOpname) btnOpname.classList.remove("hidden"); else btnOpname.classList.add("hidden"); }
+
+            let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
+            let tabUnpaid = document.getElementById("tab-unpaid-orders");
+            if(tabUnpaid) { if(payLaterEnabled) tabUnpaid.classList.remove("hidden"); else tabUnpaid.classList.add("hidden"); }
+
+            window.globalRoomList = (window.globalSettings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
+
+            // 2. Simpan Data Staff ke Local DB
+            if (result.data.staff) {
+                let txFast = db.transaction(["staff"], "readwrite");
+                txFast.objectStore("staff").clear();
+                result.data.staff.forEach(s => txFast.objectStore("staff").put(s)); 
+                await new Promise(r => txFast.oncomplete = r);
+            }
+        }
+    } catch (e) { console.error("Init Sync Failed", e); }
+};
+
 window.syncMasterData = async function(forceAwait = false) { 
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot"); 
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; } 
@@ -2571,18 +2601,20 @@ let idleTime = 0;
 function resetIdleTimer() { idleTime = 0; }
 
 window.onload = async () => { 
-    // ✅ TAMBAHAN BARU: Terapkan mode print terakhir yang disimpan
     let savedPrintMode = localStorage.getItem('preferredPrintMode') || 'bluetooth';
     window.setPrintMode(savedPrintMode);
     let printSelector = document.getElementById("print-mode-selector");
     if (printSelector) printSelector.value = savedPrintMode;
 
-    // (Biarkan kode di bawahnya tetap seperti aslinya)
     await initDB(); 
+    
+    // 1. FAST INITIAL LOAD (Hanya tarik PIN & Settings)
+    await window.syncInit();
+    
+    // 2. LAZY SYNC (Biarkan menu dan order meload tanpa membebani startup)
     window.syncMasterData(); 
     
     document.addEventListener("mousemove", resetIdleTimer);
-    // ... sisa kode onload Anda ...
     document.addEventListener("keypress", resetIdleTimer);
     document.addEventListener("touchstart", resetIdleTimer);
 
