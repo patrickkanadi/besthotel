@@ -1420,63 +1420,71 @@ window.renderActiveTickets = function() {
 };
 
 window.markTicketReady = function(orderId) { 
-    if (!navigator.onLine) return alert("⚠️ Anda harus terkoneksi internet untuk menandai pesanan selesai!");
+    if (!navigator.onLine) return alert("⚠️ Anda harus terkoneksi internet untuk menandai pesanan selesai!"); 
     
     if(confirm("Tandai pesanan ini selesai diproses dan siap diambil?")) { 
-        const ticket = window.activeLaundryTickets.find(t => t.orderId === orderId);
+        let searchId = String(orderId).trim();
+        const ticket = (window.activeLaundryTickets || []).find(t => String(t.orderId).trim() === searchId); 
+        
         if (ticket) { 
-            // 1. UI INSTANT REFRESH (Tanpa Await agar tidak stuck/lemot)
-            ticket.orderStatus = "Ready for Pickup"; 
-            ticket.syncStatus = "Pending";
-            window.renderActiveTickets();
+            ticket.orderStatus = "Ready for Pickup";  
+            ticket.syncStatus = "Pending"; 
+            window.renderActiveTickets(); 
             
-            // 2. Simpan ke database lokal
-            db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
+            db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket); 
             
-            // 3. Tembak ke server di background ("Fire and Forget")
             fetch(API_URL, { 
                 method: 'POST', 
                 redirect: 'follow',
                 headers: { "Content-Type": "text/plain;charset=utf-8" },
-                body: JSON.stringify({ action: "updateOrderStatus", orderId: orderId, status: "Ready for Pickup" }) 
-            }).catch(e => console.log("Quick update failed", e));
+                body: JSON.stringify({ action: "updateOrderStatus", orderId: searchId, status: "Ready for Pickup" }) 
+            }).catch(e => console.log("Quick update failed", e)); 
             
-            // 4. Jeda 3 detik sebelum sync besar agar UI tidak mantul
-            setTimeout(() => {
-                if (typeof window.runBackgroundSync === 'function') window.runBackgroundSync();
-            }, 3000);
-        } 
+            setTimeout(() => { 
+                if (typeof window.runBackgroundSync === 'function') window.runBackgroundSync(); 
+            }, 3000); 
+        } else {
+            alert("⚠️ Order tidak ditemukan di memori layar! Cobalah klik tombol 'Sync'.");
+        }
     } 
 };
 
-window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) {
-    activeSettlementTicket = window.globalRecentOrders.find(t => t.orderId === orderId);
-    if(!activeSettlementTicket) activeSettlementTicket = activeLaundryTickets.find(t => t.orderId === orderId);
-    if(!activeSettlementTicket) activeSettlementTicket = window.globalUnpaidOrders.find(t => t.orderId === orderId);
-    if(!activeSettlementTicket) return alert("Order tidak ditemukan!");
+window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) { 
+    // 1. Bersihkan ID dari spasi tersembunyi
+    let searchId = String(orderId).trim();
+    
+    // 2. Gunakan 'window.' secara ketat agar membaca memori yang ditarik dari server
+    activeSettlementTicket = (window.globalRecentOrders || []).find(t => String(t.orderId).trim() === searchId); 
+    if(!activeSettlementTicket) activeSettlementTicket = (window.activeLaundryTickets || []).find(t => String(t.orderId).trim() === searchId); 
+    if(!activeSettlementTicket) activeSettlementTicket = (window.globalUnpaidOrders || []).find(t => String(t.orderId).trim() === searchId); 
+    
+    if(!activeSettlementTicket) return alert("⚠️ Order tidak ditemukan di memori layar! Cobalah klik tombol 'Sync' di pojok kanan atas.");
 
-    if (remainingDue <= 0) {
-        if(confirm("Tagihan ini sudah LUNAS. Tandai selesai dan Ambil Layanan?")) {
-            activeSettlementTicket.orderStatus = "Completed"; 
-            activeSettlementTicket.syncStatus = "Pending";
-            db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
-            activeLaundryTickets = activeLaundryTickets.filter(t => t.orderId !== activeSettlementTicket.orderId);
+    if (remainingDue <= 0) { 
+        if(confirm("Tagihan ini sudah LUNAS. Tandai selesai dan Ambil Layanan?")) { 
+            activeSettlementTicket.orderStatus = "Completed";  
+            activeSettlementTicket.syncStatus = "Pending"; 
+            db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket); 
+            
+            // Hapus dari layar Aktif secara aman
+            window.activeLaundryTickets = (window.activeLaundryTickets || []).filter(t => String(t.orderId).trim() !== searchId); 
+            
             window.renderActiveTickets(); 
-            window.extractUnpaidOrders();
-            window.runBackgroundSync();
-            activeSettlementTicket = null;
-        }
-        return; 
-    }
+            window.extractUnpaidOrders(); 
+            window.runBackgroundSync(); 
+            activeSettlementTicket = null; 
+        } 
+        return;  
+    } 
     
-    let elAmt = document.getElementById("settle-amount"); if(elAmt) elAmt.innerText = `Rp ${remainingDue.toLocaleString('id-ID')}`;
+    let elAmt = document.getElementById("settle-amount"); if(elAmt) elAmt.innerText = `Rp ${remainingDue.toLocaleString('id-ID')}`; 
     
-    document.getElementById("settle-cash").value = remainingDue;
-    document.getElementById("settle-qris").value = 0;
-    document.getElementById("settle-transfer").value = 0;
+    document.getElementById("settle-cash").value = remainingDue; 
+    document.getElementById("settle-qris").value = 0; 
+    document.getElementById("settle-transfer").value = 0; 
     
-    window.settlementMode = isFromUnpaid ? 'payOnly' : 'complete';
-    document.getElementById("settlement-modal").classList.remove("hidden");
+    window.settlementMode = isFromUnpaid ? 'payOnly' : 'complete'; 
+    document.getElementById("settlement-modal").classList.remove("hidden"); 
 };
 
 window.confirmSettlement = function() {
