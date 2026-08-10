@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyJ__X_Ifrj989J2Yh9Haw1STgGeNqnwH_PcdQJQiL7ld2SONxSbY_btaS13j5I6u-MEg/exec"; // REPLACE THIS
+const API_URL = "https://script.google.com/macros/s/AKfycbzugHh60jfoNlR2p9zEBCBNnb1Ssip0IEL2YNqOABiWWOnowOh0vKrMQAQw-mEEe8Bo-Q/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
 const DB_VERSION = 5; 
 let db;
