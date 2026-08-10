@@ -1931,13 +1931,11 @@ window.submitEmergencyInbound = async function() {
     }
 };
 
-// ========================================================
-// FAST INIT: Hanya tarik PIN dan Settings agar bisa login instan
-// ========================================================
 window.syncInit = async function() {
     if (!navigator.onLine) return;
     try {
-        const response = await fetch(API_URL, { 
+        // ✅ CACHE BUSTER ADDED (?t=)
+        const response = await fetch(API_URL + "?t=" + Date.now(), { 
             method: 'POST', redirect: 'follow', headers: { "Content-Type": "text/plain;charset=utf-8" },
             body: JSON.stringify({ action: "syncInit" }) 
         });
@@ -1945,7 +1943,6 @@ window.syncInit = async function() {
         const result = JSON.parse(rawText);
         
         if (result.status === "Success") {
-            // 1. Terapkan Settings Langsung
             window.globalSettings = result.data.settings || {};
             window.masterDrawerBalanceLaundry = result.data.masterDrawerBalanceLaundry || 0;
             window.masterDrawerBalanceHotel = result.data.masterDrawerBalanceHotel || 0;
@@ -1964,106 +1961,94 @@ window.syncInit = async function() {
 
             window.globalRoomList = (window.globalSettings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
-            // 2. Simpan Data Staff ke Local DB
-            if (result.data.staff) {
-                let txFast = db.transaction(["staff"], "readwrite");
+            // ✅ FAST CACHE MENU & KATEGORI
+            let pInit = new Promise((resolve) => {
+                let txFast = db.transaction(["staff", "menu", "expense_categories"], "readwrite");
+                
                 txFast.objectStore("staff").clear();
-                result.data.staff.forEach(s => txFast.objectStore("staff").put(s)); 
-                await new Promise(r => txFast.oncomplete = r);
+                if(result.data.staff) result.data.staff.forEach(s => txFast.objectStore("staff").put(s)); 
+                
+                txFast.objectStore("menu").clear();
+                if(result.data.menu) result.data.menu.forEach(m => txFast.objectStore("menu").put(m)); 
+                
+                txFast.objectStore("expense_categories").clear();
+                if(result.data.expenseCategories) result.data.expenseCategories.forEach(c => txFast.objectStore("expense_categories").put({name: c}));
+
+                txFast.oncomplete = resolve;
+            });
+            await pInit;
+
+            // ✅ RENDER MENU INSTAN SAAT LOGIN
+            globalMenuData = result.data.menu || [];
+            if (!document.getElementById("pos-screen").classList.contains("hidden")) {
+                loadMenuUI();
             }
         }
-    } catch (e) { console.error("Init Sync Failed", e); }
+    } catch (e) { console.error("Init Sync Failed", e.message); }
 };
 
 window.syncMasterData = async function(forceAwait = false) { 
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot"); 
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; } 
     try { 
-        const response = await fetch(API_URL, { 
+        // ✅ CACHE BUSTER ADDED (?t=)
+        const response = await fetch(API_URL + "?t=" + Date.now(), { 
             method: 'POST', 
-            redirect: 'follow',
+            redirect: 'follow', 
             headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify({ action: "syncMasterData" })
+            body: JSON.stringify({ action: "syncMasterData" }) 
         });  
         
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`); 
         
         const rawText = await response.text();
-        const result = JSON.parse(rawText); 
+        let result;
+        try { 
+            result = JSON.parse(rawText); 
+        } catch(err) { 
+            throw new Error("Server mengirim HTML/Error, bukan JSON."); 
+        }
         
         if (result.status === "Success") { 
-            // =========================================================
-            // CATATAN: Settings, Staff & Laci sudah ditarik di syncInit
-            // =========================================================
             window.globalRecentOrders = result.data.recentOrders || []; 
             window.globalRecentExpenses = result.data.recentExpenses || []; 
             window.globalRecentDrops = result.data.recentDrops || []; 
             window.globalRecentShifts = result.recentShifts || []; 
             window.globalPendingInbounds = result.data.pendingInbounds || []; 
-            
-            let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE"; 
-            let hasUnpaid = result.data.unpaidOrders && result.data.unpaidOrders.length > 0; 
-            let tabUnpaid = document.getElementById("tab-unpaid-orders"); 
-            
-            if(tabUnpaid) { 
-                if(payLaterEnabled || hasUnpaid) tabUnpaid.classList.remove("hidden"); 
-                else tabUnpaid.classList.add("hidden"); 
-            }
-
-            // ✅ FIX 1: Gunakan window.globalSettings (sudah aman dari syncInit)
-            window.globalRoomList = (window.globalSettings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
             let localOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result)); 
             let pendingOrders = localOrders.filter(o => o.syncStatus === "Pending");
 
-            let p1 = new Promise((resolve) => { 
-                // ✅ FIX 2: Hapus "staff" agar tidak menabrak error "undefined"
-                let txFast = db.transaction(["menu", "expense_categories"], "readwrite"); 
-                
-                txFast.objectStore("menu").clear(); 
-                if (result.data.menu) {
-                    result.data.menu.forEach(m => txFast.objectStore("menu").put(m)); 
-                }
-                
-                txFast.objectStore("expense_categories").clear(); 
-                if (result.data.expenseCategories) { 
-                    result.data.expenseCategories.forEach(c => txFast.objectStore("expense_categories").put({name: c})); 
-                }
-
-                txFast.oncomplete = () => { 
-                    globalMenuData = result.data.menu || [];  
-                    
-                    let serverActive = result.data.activeLaundryOrders || []; 
-                    pendingOrders.forEach(po => { 
-                        if (po.orderStatus === "Processing" || po.orderStatus === "Ready for Pickup") { 
-                            if (!serverActive.find(s => s.orderId === po.orderId)) serverActive.unshift(po); 
-                        } 
-                    }); 
-                    window.activeLaundryTickets = serverActive;
-
-                    let serverUnpaid = result.data.unpaidOrders || []; 
-                    pendingOrders.forEach(po => { 
-                        let totalPaid = (po.cashLaundryAmount||0) + (po.cashHotelAmount||0) + (po.qrisAmount||0) + (po.transferAmount||0); 
-                        if (Math.round(po.grandTotal) > Math.round(totalPaid) && po.orderStatus !== "Voided" && po.orderStatus !== "Void Pending") { 
-                            if (!serverUnpaid.find(s => s.orderId === po.orderId)) serverUnpaid.unshift(po); 
-                        } 
-                    }); 
-                    window.globalUnpaidOrders = serverUnpaid;
-
-                    let tc = document.getElementById("ticket-count");  
-                    if(tc) tc.innerText = window.activeLaundryTickets.length; 
-                    
-                    if (!document.getElementById("pos-screen").classList.contains("hidden")) {  
-                        loadMenuUI();  
-                        window.renderActiveTickets(); 
-                        window.extractUnpaidOrders(); 
-                    } 
-                    if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71"; resolve(); 
-                }; 
+            let serverActive = result.data.activeLaundryOrders || []; 
+            pendingOrders.forEach(po => { 
+                if (po.orderStatus === "Processing" || po.orderStatus === "Ready for Pickup") { 
+                    if (!serverActive.find(s => s.orderId === po.orderId)) serverActive.unshift(po); 
+                } 
             }); 
-            if(forceAwait) await p1;  
+            window.activeLaundryTickets = serverActive;
+
+            let serverUnpaid = result.data.unpaidOrders || []; 
+            pendingOrders.forEach(po => { 
+                let totalPaid = (po.cashLaundryAmount||0) + (po.cashHotelAmount||0) + (po.qrisAmount||0) + (po.transferAmount||0); 
+                if (Math.round(po.grandTotal) > Math.round(totalPaid) && po.orderStatus !== "Voided" && po.orderStatus !== "Void Pending") { 
+                    if (!serverUnpaid.find(s => s.orderId === po.orderId)) serverUnpaid.unshift(po); 
+                } 
+            }); 
+            window.globalUnpaidOrders = serverUnpaid;
+
+            let tc = document.getElementById("ticket-count");  
+            if(tc) tc.innerText = window.activeLaundryTickets.length; 
+            
+            if (!document.getElementById("pos-screen").classList.contains("hidden")) {  
+                window.renderActiveTickets(); 
+                window.extractUnpaidOrders(); 
+            } 
+            if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71";
         } 
-    } catch (e) { if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; console.log(e); } 
+    } catch (e) { 
+        if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; 
+        console.error("SyncMasterData Error:", e.message); 
+    } 
 };
 
 window.extractUnpaidOrders = function() {
