@@ -1979,7 +1979,6 @@ window.syncMasterData = async function(forceAwait = false) {
     let nTxt = document.getElementById("network-text"); let nDot = document.getElementById("network-dot"); 
     if (!navigator.onLine) { if(nTxt) nTxt.innerText = "Mode Offline"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; return; } 
     try { 
-        // ✅ FIX: Ubah ke POST + Headers
         const response = await fetch(API_URL, { 
             method: 'POST', 
             redirect: 'follow',
@@ -1993,17 +1992,17 @@ window.syncMasterData = async function(forceAwait = false) {
         const result = JSON.parse(rawText); 
         
         if (result.status === "Success") { 
-            window.masterDrawerBalanceLaundry = result.masterDrawerBalanceLaundry || 0; 
-            window.masterDrawerBalanceHotel = result.masterDrawerBalanceHotel || 0; 
+            // =========================================================
+            // CATATAN: Settings, Staff & Laci sudah ditarik di syncInit
+            // =========================================================
             window.globalRecentOrders = result.data.recentOrders || []; 
             window.globalRecentExpenses = result.data.recentExpenses || []; 
             window.globalRecentDrops = result.data.recentDrops || []; 
             window.globalRecentShifts = result.recentShifts || []; 
             window.globalPendingInbounds = result.data.pendingInbounds || []; 
             
-            window.globalSettings = result.data.settings || {}; 
             let payLaterEnabled = String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE"; 
-            let hasUnpaid = window.globalUnpaidOrders && window.globalUnpaidOrders.length > 0; 
+            let hasUnpaid = result.data.unpaidOrders && result.data.unpaidOrders.length > 0; 
             let tabUnpaid = document.getElementById("tab-unpaid-orders"); 
             
             if(tabUnpaid) { 
@@ -2011,15 +2010,20 @@ window.syncMasterData = async function(forceAwait = false) {
                 else tabUnpaid.classList.add("hidden"); 
             }
 
-            window.globalRoomList = (result.data.settings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
+            // ✅ FIX 1: Gunakan window.globalSettings (sudah aman dari syncInit)
+            window.globalRoomList = (window.globalSettings["Room_List"] || "").split(",").map(r => r.trim()).filter(r => r);
 
             let localOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result)); 
             let pendingOrders = localOrders.filter(o => o.syncStatus === "Pending");
 
             let p1 = new Promise((resolve) => { 
-                let txFast = db.transaction(["staff", "menu", "expense_categories"], "readwrite"); 
-                txFast.objectStore("staff").clear(); result.data.staff.forEach(s => txFast.objectStore("staff").put(s)); 
-                txFast.objectStore("menu").clear(); result.data.menu.forEach(m => txFast.objectStore("menu").put(m)); 
+                // ✅ FIX 2: Hapus "staff" agar tidak menabrak error "undefined"
+                let txFast = db.transaction(["menu", "expense_categories"], "readwrite"); 
+                
+                txFast.objectStore("menu").clear(); 
+                if (result.data.menu) {
+                    result.data.menu.forEach(m => txFast.objectStore("menu").put(m)); 
+                }
                 
                 txFast.objectStore("expense_categories").clear(); 
                 if (result.data.expenseCategories) { 
@@ -2027,7 +2031,7 @@ window.syncMasterData = async function(forceAwait = false) {
                 }
 
                 txFast.oncomplete = () => { 
-                    globalMenuData = result.data.menu;  
+                    globalMenuData = result.data.menu || [];  
                     
                     let serverActive = result.data.activeLaundryOrders || []; 
                     pendingOrders.forEach(po => { 
