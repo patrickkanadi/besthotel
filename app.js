@@ -2586,8 +2586,11 @@ window.triggerEndShift = async function(isAutoClose = false) {
     };
 };
 
-let idleTime = 0;
-function resetIdleTimer() { idleTime = 0; }
+// ==========================================
+// SMART AUTO-LOGOUT & IDLE TRACKING
+// ==========================================
+window.lastActivityWrite = Date.now();
+function resetIdleTimer() { window.lastActivityWrite = Date.now(); }
 
 window.onload = async () => { 
     let savedPrintMode = localStorage.getItem('preferredPrintMode') || 'bluetooth';
@@ -2596,13 +2599,10 @@ window.onload = async () => {
     if (printSelector) printSelector.value = savedPrintMode;
 
     await initDB(); 
-    
-    // 1. FAST INITIAL LOAD (Hanya tarik PIN & Settings)
     await window.syncInit();
-    
-    // 2. LAZY SYNC (Biarkan menu dan order meload tanpa membebani startup)
     window.syncMasterData(); 
     
+    // Listeners to detect if the cashier is actually using the tablet
     document.addEventListener("mousemove", resetIdleTimer);
     document.addEventListener("keypress", resetIdleTimer);
     document.addEventListener("touchstart", resetIdleTimer);
@@ -2617,28 +2617,31 @@ window.onload = async () => {
     window.setInterval(window.runBackgroundSync, 5000); 
     window.setInterval(window.syncMasterData, 30000); 
     
+    // =========================================================
     // AUTO LOGOUT LOGIC (Checks every 30 seconds)
+    // =========================================================
     window.setInterval(async () => {
         if (!currentShiftId || !currentLoginTime) return; // Not logged in
 
         // Hitung durasi aktual dari waktu pertama kali login
         let shiftStartTime = new Date(currentLoginTime).getTime();
         let elapsedHours = (Date.now() - shiftStartTime) / (1000 * 60 * 60);
+        
+        // Hitung berapa lama tablet tidak disentuh (Idle time)
+        let idleHours = (Date.now() - window.lastActivityWrite) / (1000 * 60 * 60);
 
-        // Limit Maksimal 9 Jam (Berdasarkan waktu login, bukan idle mouse)
-        if (elapsedHours >= 9) {
+        // KONDISI AUTO-CLOSE: Shift sudah buka > 8 Jam DAN kasir menghilang (Idle) > 1 Jam
+        if (elapsedHours >= 8 && idleHours >= 1) {
             let activeOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
             let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId);
             
-            // Ghost Shift Rule: 0 orders dalam 9 jam
             if (shiftOrders.length === 0) {
                 db.transaction(["active_shifts"], "readwrite").objectStore("active_shifts").delete(currentPin);
-                alert("Sistem mendeteksi shift kosong selama 9 jam. Logout otomatis tanpa menyimpan laporan.");
+                alert("Sistem mendeteksi shift kosong tanpa aktivitas. Logout otomatis.");
                 window.location.reload();
             } else {
                 // Legitimate Shift: Auto-End & Report
                 await window.openShiftReport();
-                // Eksekusi penutupan paksa (isAutoClose = true)
                 window.triggerEndShift(true); 
             }
         }
