@@ -246,14 +246,32 @@ window.printShiftStandard = function(shiftId) {
         ${itemsHtml}
     `;
     
+   let totalKeluarl = (s.expLaundry || 0) + (s.dropLaundry || 0);
+    let totalKeluarH = (s.expHotel || 0) + (s.dropHotel || 0);
+
     let total = `
         <table style="width:100%; border-collapse:collapse; font-size:14px;">
             <tr><td style="padding:4px 0;">Omset Laundry</td><td style="text-align:right; font-weight:bold;">Rp ${(s.omsetLaundry||0).toLocaleString('id-ID')}</td></tr>
             <tr><td style="padding:4px 0; border-bottom:1px solid #aaa;">Omset Hotel</td><td style="text-align:right; font-weight:bold; border-bottom:1px solid #aaa;">Rp ${(s.omsetHotel||0).toLocaleString('id-ID')}</td></tr>
+            
+            <tr><td colspan="2" style="padding:8px 0 2px 0; font-weight:bold; font-size:13px; color:#555;">Rincian Pembayaran Masuk:</td></tr>
+            <tr><td style="padding:2px 0 2px 10px; font-size:13px;">Tunai (Laundry)</td><td style="text-align:right; font-size:13px;">Rp ${(s.cashLaundry||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:2px 0 2px 10px; font-size:13px;">QRIS (Laundry)</td><td style="text-align:right; font-size:13px;">Rp ${(s.qrisLaundry||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:2px 0 2px 10px; font-size:13px;">Tunai (Hotel)</td><td style="text-align:right; font-size:13px;">Rp ${(s.cashHotel||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:2px 0 2px 10px; font-size:13px; border-bottom:1px dashed #aaa; padding-bottom:8px;">Transfer (Hotel)</td><td style="text-align:right; font-size:13px; border-bottom:1px dashed #aaa; padding-bottom:8px;">Rp ${(s.transferHotel||0).toLocaleString('id-ID')}</td></tr>
+            
+            ${(totalKeluarl > 0 || totalKeluarH > 0) ? `
+            <tr><td colspan="2" style="padding:8px 0 2px 0; font-weight:bold; font-size:13px; color:#555;">Pengeluaran & Tarik Laci:</td></tr>
+            ${totalKeluarl > 0 ? `<tr><td style="padding:2px 0 2px 10px; font-size:13px; color:#c0392b;">Keluar (Laundry)</td><td style="text-align:right; font-size:13px; color:#c0392b;">-Rp ${totalKeluarl.toLocaleString('id-ID')}</td></tr>` : ''}
+            ${totalKeluarH > 0 ? `<tr><td style="padding:2px 0 2px 10px; font-size:13px; color:#c0392b;">Keluar (Hotel)</td><td style="text-align:right; font-size:13px; color:#c0392b;">-Rp ${totalKeluarH.toLocaleString('id-ID')}</td></tr>` : ''}
+            <tr><td colspan="2" style="border-bottom:1px dashed #aaa; padding-bottom:4px;"></td></tr>
+            ` : ''}
+
             <tr><td style="padding:8px 0 4px 0;">Netto Laci Laundry</td><td style="text-align:right; font-weight:bold; color:#27ae60; padding-top:8px;">Rp ${(s.netLaundry||0).toLocaleString('id-ID')}</td></tr>
             <tr><td style="padding:4px 0;">Netto Laci Hotel</td><td style="text-align:right; font-weight:bold; color:#27ae60;">Rp ${(s.netHotel||0).toLocaleString('id-ID')}</td></tr>
         </table>
     `;
+    
     window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "single");
 };
 
@@ -2414,27 +2432,33 @@ window.openShiftReport = async function() {
 
     // 3. MERGE SERVER DATA + LOCAL DATA (Akurat & Cepat!)
     let allOrdersMap = new Map();
+    // 1. Masukkan data server terlebih dahulu sebagai Single Source of Truth
     (window.globalRecentOrders || []).forEach(so => allOrdersMap.set(so.orderId, so));
+    // 2. Tambahkan data lokal HANYA JIKA belum ada di server (misal saat sedang offline)
     localOrders.forEach(lo => {
-        let existing = allOrdersMap.get(lo.orderId);
-        if (existing) lo.orderStatus = existing.orderStatus; // Ambil status asli dari server (jika di-void admin)
-        allOrdersMap.set(lo.orderId, lo);
+        if (!allOrdersMap.has(lo.orderId)) {
+            allOrdersMap.set(lo.orderId, lo);
+        }
     });
     let combinedOrders = Array.from(allOrdersMap.values());
     let shiftOrders = combinedOrders.filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
-
+    
     let allExpMap = new Map();
     (window.globalRecentExpenses || []).forEach(se => allExpMap.set(se.expenseId, se));
     localExpenses.forEach(le => {
-        let existing = allExpMap.get(le.expenseId);
-        if (existing) le.status = existing.status;
-        allExpMap.set(le.expenseId, le);
+        if (!allExpMap.has(le.expenseId)) {
+            allExpMap.set(le.expenseId, le);
+        }
     });
     let shiftExpenses = Array.from(allExpMap.values()).filter(e => e.shiftId === currentShiftId && e.status !== "Voided" && e.status !== "Void Pending");
-
+    
     let allDropsMap = new Map();
     (window.globalRecentDrops || []).forEach(sd => allDropsMap.set(sd.dropId, sd));
-    localDrops.forEach(ld => allDropsMap.set(ld.dropId, ld));
+    localDrops.forEach(ld => {
+        if (!allDropsMap.has(ld.dropId)) {
+            allDropsMap.set(ld.dropId, ld);
+        }
+    });
     let shiftDrops = Array.from(allDropsMap.values()).filter(d => d.shiftId === currentShiftId);
     
     // 4. KALKULASI LAPORAN
