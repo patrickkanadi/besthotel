@@ -258,7 +258,8 @@ window.printShiftStandard = function(shiftId) {
             <tr><td style="padding:2px 0 2px 10px; font-size:13px;">Tunai (Laundry)</td><td style="text-align:right; font-size:13px;">Rp ${(s.cashLaundry||0).toLocaleString('id-ID')}</td></tr>
             <tr><td style="padding:2px 0 2px 10px; font-size:13px;">QRIS (Laundry)</td><td style="text-align:right; font-size:13px;">Rp ${(s.qrisLaundry||0).toLocaleString('id-ID')}</td></tr>
             <tr><td style="padding:2px 0 2px 10px; font-size:13px;">Tunai (Hotel)</td><td style="text-align:right; font-size:13px;">Rp ${(s.cashHotel||0).toLocaleString('id-ID')}</td></tr>
-            <tr><td style="padding:2px 0 2px 10px; font-size:13px; border-bottom:1px dashed #aaa; padding-bottom:8px;">Transfer (Hotel)</td><td style="text-align:right; font-size:13px; border-bottom:1px dashed #aaa; padding-bottom:8px;">Rp ${(s.transferHotel||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:2px 0 2px 10px; font-size:13px;">Transfer (Hotel)</td><td style="text-align:right; font-size:13px;">Rp ${(s.transferHotel||0).toLocaleString('id-ID')}</td></tr>
+            <tr><td style="padding:2px 0 2px 10px; font-size:13px; border-bottom:1px dashed #aaa; padding-bottom:8px;">Debit (Hotel)</td><td style="text-align:right; font-size:13px; border-bottom:1px dashed #aaa; padding-bottom:8px;">Rp ${(s.debitHotel||0).toLocaleString('id-ID')}</td></tr>
             
             ${(totalKeluarl > 0 || totalKeluarH > 0) ? `
             <tr><td colspan="2" style="padding:8px 0 2px 0; font-weight:bold; font-size:13px; color:#555;">Pengeluaran & Tarik Laci:</td></tr>
@@ -539,6 +540,7 @@ window.buildShiftReportReceipt = async function(data) {
     r += formatEscPosLine("Omset", "Rp " + (data.omsetHotel || 0).toLocaleString('id-ID'), false) + "\n";
     r += formatEscPosLine("Tunai Masuk", "Rp " + (data.cashHotel || 0).toLocaleString('id-ID'), false) + "\n";
     r += formatEscPosLine("Trf Masuk", "Rp " + (data.transferHotel || 0).toLocaleString('id-ID'), false) + "\n";
+    r += formatEscPosLine("Debit Masuk", "Rp " + (data.debitHotel || 0).toLocaleString('id-ID'), false) + "\n"; // NEW
     let totalKeluarH = (data.expHotel || 0) + (data.dropHotel || 0);
     if (totalKeluarH > 0) r += formatEscPosLine("Tarik/Keluar", "-Rp " + totalKeluarH.toLocaleString('id-ID'), false) + "\n";
     r += CMD_BOLD_ON + formatEscPosLine("NETTO LACI", "Rp " + (data.netHotel || 0).toLocaleString('id-ID'), false) + "\n" + CMD_BOLD_OFF;
@@ -745,7 +747,7 @@ window.printOrderGlobal = async function(orderId) {
         if(!o) return alert("Data order tidak ditemukan di sistem.");
         
         if (typeof btCharacteristic !== 'undefined' && btCharacteristic) {
-            let totalPaid = (Number(o.cashLaundryAmount)||0) + (Number(o.cashHotelAmount)||0) + (Number(o.qrisAmount)||0) + (Number(o.transferAmount)||0);
+            let totalPaid = (Number(o.cashLaundryAmount)||0) + (Number(o.cashHotelAmount)||0) + (Number(o.qrisAmount)||0) + (Number(o.transferAmount)||0) + (Number(o.debitAmount)||0);
             let remaining = o.grandTotal - totalPaid;
             // Gunakan format struk rapi yang baru kita buat
             await window.buildEscPosReceipt(o.orderId, o, totalPaid, remaining, o.paymentMethod || "Split");
@@ -1259,9 +1261,10 @@ window.calculateRemaining = function(manualCash = false) {
     let free = Number(document.getElementById("pay-free").value) || 0;
     let qris = Number(document.getElementById("pay-qris").value) || 0;
     let trans = Number(document.getElementById("pay-transfer").value) || 0;
+    let debit = Number(document.getElementById("pay-debit")?.value) || 0; // NEW
 
     let remLaundry = Math.max(0, window.cartLaundryTotal - qris);
-    let remHotel = Math.max(0, window.cartHotelTotal - trans);
+    let remHotel = Math.max(0, window.cartHotelTotal - trans - debit); // NEW
 
     let discountLeft = free;
     if (remHotel >= discountLeft) {
@@ -1316,9 +1319,10 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
     let cashH = window.cashHotelAmount || 0;
     let qris = Number(document.getElementById("pay-qris").value) || 0;
     let transfer = Number(document.getElementById("pay-transfer").value) || 0;
+    let debit = Number(document.getElementById("pay-debit")?.value) || 0; // NEW
     let free = Number(document.getElementById("pay-free").value) || 0;
     
-    let totalPaid = cashL + cashH + qris + transfer; 
+    let totalPaid = cashL + cashH + qris + transfer + debit; // NEW
     let payLaterEnabled = window.globalSettings && String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
 
     // 1. Cek Kasbon / Belum Lunas
@@ -1339,7 +1343,7 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
         orderId: "ORD-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId,
         roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, readableReceipt: currentCart.map(i => `${i.qty}x ${i.name}`).join('\n'),
         subtotal: window.cartSubtotal, discounts: free, grandTotal: window.cartGrandTotal,
-        paymentMethod: "Split", cashLaundryAmount: cashL, cashHotelAmount: cashH, qrisAmount: qris, transferAmount: transfer, freeAmount: free, syncStatus: "Pending" 
+        paymentMethod: "Split", cashLaundryAmount: cashL, cashHotelAmount: cashH, qrisAmount: qris, transferAmount: transfer, debitAmount: debit, freeAmount: free, syncStatus: "Pending" // NEW (added debitAmount: debit)
     };
 
     // 3. Simpan ke Database Lokal & Memori
@@ -1498,6 +1502,7 @@ window.confirmSettlement = function() {
     const cash = Number(document.getElementById("settle-cash").value) || 0; 
     const q = Number(document.getElementById("settle-qris").value) || 0; 
     const t = Number(document.getElementById("settle-transfer").value) || 0;
+    const d = Number(document.getElementById("settle-debit")?.value) || 0; // NEW
     
     let cLTotal = 0; let cHTotal = 0;
     if (activeSettlementTicket.items && activeSettlementTicket.items.length > 0) {
@@ -1522,14 +1527,14 @@ window.confirmSettlement = function() {
     }
 
     let remLaundry = Math.max(0, cLTotal - (activeSettlementTicket.cashLaundryAmount||0) - (activeSettlementTicket.qrisAmount||0));
-    let remHotel = Math.max(0, cHTotal - (activeSettlementTicket.cashHotelAmount||0) - (activeSettlementTicket.transferAmount||0));
+    let remHotel = Math.max(0, cHTotal - (activeSettlementTicket.cashHotelAmount||0) - (activeSettlementTicket.transferAmount||0) - (activeSettlementTicket.debitAmount||0)); // NEW
 
     let discountLeft = activeSettlementTicket.discounts || 0;
     if (remHotel >= discountLeft) { remHotel -= discountLeft; }
     else { discountLeft -= remHotel; remHotel = 0; remLaundry = Math.max(0, remLaundry - discountLeft); }
 
     remLaundry = Math.max(0, remLaundry - q);
-    remHotel = Math.max(0, remHotel - t);
+    remHotel = Math.max(0, remHotel - t - d); // NEW
 
     let newCashL = 0; let newCashH = 0;
     if (cash >= (remLaundry + remHotel)) {
@@ -1544,11 +1549,11 @@ window.confirmSettlement = function() {
     activeSettlementTicket.cashHotelAmount = (activeSettlementTicket.cashHotelAmount || 0) + newCashH;
     activeSettlementTicket.qrisAmount = (activeSettlementTicket.qrisAmount || 0) + q;
     activeSettlementTicket.transferAmount = (activeSettlementTicket.transferAmount || 0) + t;
+    activeSettlementTicket.debitAmount = (activeSettlementTicket.debitAmount || 0) + d; // NEW
     
-    // ✅ BUG 3 FIX: Assign ticket to the current shift where the cash was physically received
     activeSettlementTicket.shiftId = currentShiftId; 
     
-    let totalPaidNow = activeSettlementTicket.cashHotelAmount + activeSettlementTicket.cashLaundryAmount + activeSettlementTicket.qrisAmount + activeSettlementTicket.transferAmount + (activeSettlementTicket.discounts||0);
+    let totalPaidNow = activeSettlementTicket.cashHotelAmount + activeSettlementTicket.cashLaundryAmount + activeSettlementTicket.qrisAmount + activeSettlementTicket.transferAmount + (activeSettlementTicket.debitAmount||0) + (activeSettlementTicket.discounts||0); // NEW
     
     if (window.settlementMode === 'complete') {
         if (Math.round(activeSettlementTicket.grandTotal) > Math.round(totalPaidNow)) {
@@ -2462,13 +2467,13 @@ window.openShiftReport = async function() {
     let shiftDrops = Array.from(allDropsMap.values()).filter(d => d.shiftId === currentShiftId);
     
     // 4. KALKULASI LAPORAN
-    let tOrders = 0; let tFree = 0; let omsetL = 0; let omsetH = 0; let cashL = 0; let cashH = 0; let qrisL = 0; let transferH = 0;
+    let tOrders = 0; let tFree = 0; let omsetL = 0; let omsetH = 0; let cashL = 0; let cashH = 0; let qrisL = 0; let transferH = 0; let debitH = 0; // NEW
     let foodSummary = {};
     
     shiftOrders.forEach(o => {
         tOrders++; tFree += (o.discounts || 0);
         cashL += (o.cashLaundryAmount || 0); cashH += (o.cashHotelAmount || 0);
-        qrisL += (o.qrisAmount || 0); transferH += (o.transferAmount || 0);
+        qrisL += (o.qrisAmount || 0); transferH += (o.transferAmount || 0); debitH += (o.debitAmount || 0); // NEW
         
         let orderOmsetL = 0; let orderOmsetH = 0;
         
@@ -2510,7 +2515,7 @@ window.openShiftReport = async function() {
     window.currentShiftData = { 
         shiftId: currentShiftId, loginTime: currentLoginTime, logoutTime: new Date().toISOString(), cashier: currentCashier, 
         totalOrders: tOrders, totalFree: tFree, omsetLaundry: omsetL, omsetHotel: omsetH,
-        cashLaundry: cashL, cashHotel: cashH, qrisLaundry: qrisL, transferHotel: transferH,
+        cashLaundry: cashL, cashHotel: cashH, qrisLaundry: qrisL, transferHotel: transferH, debitHotel: debitH, // NEW
         expLaundry: expL, expHotel: expH, dropLaundry: dropL, dropHotel: dropH,
         netLaundry: netL, netHotel: netH, foodSummary: foodSummary
     };
@@ -2525,6 +2530,7 @@ window.openShiftReport = async function() {
     if (document.getElementById("sr-cash-hotel")) document.getElementById("sr-cash-hotel").innerText = "Rp " + cashH.toLocaleString('id-ID');
     if (document.getElementById("sr-qris-laundry")) document.getElementById("sr-qris-laundry").innerText = "Rp " + qrisL.toLocaleString('id-ID');
     if (document.getElementById("sr-transfer-hotel")) document.getElementById("sr-transfer-hotel").innerText = "Rp " + transferH.toLocaleString('id-ID');
+    if (document.getElementById("sr-debit-hotel")) document.getElementById("sr-debit-hotel").innerText = "Rp " + debitH.toLocaleString('id-ID'); // NEW
 
     if (document.getElementById("sr-exp-laundry")) document.getElementById("sr-exp-laundry").innerText = "Rp " + (expL + dropL).toLocaleString('id-ID');
     if (document.getElementById("sr-exp-hotel")) document.getElementById("sr-exp-hotel").innerText = "Rp " + (expH + dropH).toLocaleString('id-ID');
