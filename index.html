@@ -282,6 +282,11 @@
                     <label>Transfer Bank (Khusus Hotel)</label>
                     <input type="number" id="pay-transfer" value="0" onclick="this.select()" oninput="calculateRemaining()">
                 </div>
+                <!-- TAMBAHKAN BLOK DEBIT INI -->
+                <div class="form-box" style="margin-bottom:0;">
+                    <label>Debit (Khusus Hotel)</label>
+                    <input type="number" id="pay-debit" value="0" onclick="this.select()" oninput="calculateRemaining()">
+                </div>
                 <div class="form-box" style="margin-bottom:0;">
                     <label style="color:#27ae60;">Diskon Potongan (Rp)</label>
                     <input type="number" id="pay-free" value="0" onclick="this.select()" oninput="calculateRemaining()">
@@ -318,6 +323,11 @@
             <div class="form-box" style="margin-bottom:10px;">
                 <label>Transfer (Khusus Hotel)</label>
                 <input type="number" id="settle-transfer" value="0" onclick="this.select()">
+            </div>
+            <!-- TAMBAHKAN BLOK DEBIT INI -->
+            <div class="form-box" style="margin-bottom:10px;">
+                <label>Debit (Khusus Hotel)</label>
+                <input type="number" id="settle-debit" value="0" onclick="this.select()">
             </div>
             <div style="display:flex; gap:10px; margin-top:20px;">
                 <button onclick="document.getElementById('settlement-modal').classList.add('hidden')" style="flex:1; padding:12px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold;">Batal</button>
@@ -434,6 +444,7 @@
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span style="color:#e67e22;">Tunai (Hotel)</span> <strong id="sr-cash-hotel">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>QRIS (Laundry)</span> <strong id="sr-qris-laundry">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>Transfer (Hotel)</span> <strong id="sr-transfer-hotel">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>Debit (Hotel)</span> <strong id="sr-debit-hotel">Rp 0</strong></div>
                     </div>
 
                     <div class="revenue-breakdown" style="padding: 15px; margin-bottom: 0;">
@@ -533,6 +544,7 @@
                         <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#e67e22;">Tunai (Hotel)</span> <strong id="detail-cash-h">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>QRIS (Laundry)</span> <strong id="detail-qris">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Transfer (Hotel)</span> <strong id="detail-transfer">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Debit (Hotel)</span> <strong id="detail-debit">Rp 0</strong></div>
                     </div>
                 </div>
 
@@ -569,6 +581,7 @@
                         <div class="revenue-section-title" style="margin-bottom: 8px; font-size: 16px;">💵 Penerimaan Masuk</div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span style="color:#2980b9;">Tunai (Laundry)</span> <strong id="hist-sr-cash-laundry">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span style="color:#e67e22;">Tunai (Hotel)</span> <strong id="hist-sr-cash-hotel">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>Debit (Hotel)</span> <strong id="hist-sr-debit-hotel">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>QRIS (Laundry)</span> <strong id="hist-sr-qris-laundry">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>Transfer (Hotel)</span> <strong id="hist-sr-transfer-hotel">Rp 0</strong></div>
                     </div>
