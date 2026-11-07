@@ -279,10 +279,13 @@
                     <input type="number" id="pay-qris" value="0" onclick="this.select()" oninput="calculateRemaining()">
                 </div>
                 <div class="form-box" style="margin-bottom:0;">
+                    <label style="color:#e67e22;">QRIS (Khusus Hotel)</label>
+                    <input type="number" id="pay-qris-hotel" value="0" onclick="this.select()" oninput="calculateRemaining()">
+                </div>
+                <div class="form-box" style="margin-bottom:0;">
                     <label>Transfer Bank (Khusus Hotel)</label>
                     <input type="number" id="pay-transfer" value="0" onclick="this.select()" oninput="calculateRemaining()">
                 </div>
-                <!-- TAMBAHKAN BLOK DEBIT INI -->
                 <div class="form-box" style="margin-bottom:0;">
                     <label>Debit (Khusus Hotel)</label>
                     <input type="number" id="pay-debit" value="0" onclick="this.select()" oninput="calculateRemaining()">
@@ -292,7 +295,7 @@
                     <input type="number" id="pay-free" value="0" onclick="this.select()" oninput="calculateRemaining()">
                 </div>
                 <div class="form-box" style="margin-bottom:0;">
-                    <label style="color:#c0392b;">Tunai / Cash</label>
+                    <label style="color:#c0392b;">Tunai / Cash (Auto-Balance)</label>
                     <input type="number" id="pay-cash" value="0" onclick="this.select()" oninput="calculateRemaining(true)" style="background:#e8f4f8; font-weight:bold; color:#2980b9;">
                 </div>
             </div>
@@ -321,10 +324,13 @@
                 <input type="number" id="settle-qris" value="0" onclick="this.select()">
             </div>
             <div class="form-box" style="margin-bottom:10px;">
+                <label style="color:#e67e22;">QRIS (Khusus Hotel)</label>
+                <input type="number" id="settle-qris-hotel" value="0" onclick="this.select()">
+            </div>
+            <div class="form-box" style="margin-bottom:10px;">
                 <label>Transfer (Khusus Hotel)</label>
                 <input type="number" id="settle-transfer" value="0" onclick="this.select()">
             </div>
-            <!-- TAMBAHKAN BLOK DEBIT INI -->
             <div class="form-box" style="margin-bottom:10px;">
                 <label>Debit (Khusus Hotel)</label>
                 <input type="number" id="settle-debit" value="0" onclick="this.select()">
@@ -443,6 +449,7 @@
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span style="color:#2980b9;">Tunai (Laundry)</span> <strong id="sr-cash-laundry">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span style="color:#e67e22;">Tunai (Hotel)</span> <strong id="sr-cash-hotel">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>QRIS (Laundry)</span> <strong id="sr-qris-laundry">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span style="color:#e67e22;">QRIS (Hotel)</span> <strong id="sr-qris-hotel">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>Transfer (Hotel)</span> <strong id="sr-transfer-hotel">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>Debit (Hotel)</span> <strong id="sr-debit-hotel">Rp 0</strong></div>
                     </div>
@@ -543,6 +550,7 @@
                         <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#2980b9;">Tunai (Laundry)</span> <strong id="detail-cash-l">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#e67e22;">Tunai (Hotel)</span> <strong id="detail-cash-h">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>QRIS (Laundry)</span> <strong id="detail-qris">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span style="color:#e67e22;">QRIS (Hotel)</span> <strong id="detail-qris-h">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Transfer (Hotel)</span> <strong id="detail-transfer">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 2px 0; font-size: 12px;"><span>Debit (Hotel)</span> <strong id="detail-debit">Rp 0</strong></div>
                     </div>
@@ -582,6 +590,7 @@
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span style="color:#2980b9;">Tunai (Laundry)</span> <strong id="hist-sr-cash-laundry">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span style="color:#e67e22;">Tunai (Hotel)</span> <strong id="hist-sr-cash-hotel">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>QRIS (Laundry)</span> <strong id="hist-sr-qris-laundry">Rp 0</strong></div>
+                        <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span style="color:#e67e22;">QRIS (Hotel)</span> <strong id="hist-sr-qris-hotel">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>Transfer (Hotel)</span> <strong id="hist-sr-transfer-hotel">Rp 0</strong></div>
                         <div class="revenue-row" style="padding: 4px 0; font-size: 15px;"><span>Debit (Hotel)</span> <strong id="hist-sr-debit-hotel">Rp 0</strong></div>
                     </div>
