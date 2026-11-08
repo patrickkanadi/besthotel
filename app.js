@@ -1567,7 +1567,7 @@ window.confirmSettlement = function() {
     activeSettlementTicket.debitAmount = (activeSettlementTicket.debitAmount || 0) + d;
     activeSettlementTicket.shiftId = currentShiftId;
     
-    let totalPaidNow = activeSettlementTicket.cashHotelAmount + activeSettlementTicket.cashLaundryAmount + activeSettlementTicket.qrisAmount + activeSettlementTicket.transferAmount + (activeSettlementTicket.debitAmount||0) + (activeSettlementTicket.discounts||0); // NEW
+    let totalPaidNow = (Number(activeSettlementTicket.cashHotelAmount)||0) + (Number(activeSettlementTicket.cashLaundryAmount)||0) + (Number(activeSettlementTicket.qrisAmount)||0) + (Number(activeSettlementTicket.qrisHotelAmount)||0) + (Number(activeSettlementTicket.transferAmount)||0) + (Number(activeSettlementTicket.debitAmount)||0) + (Number(activeSettlementTicket.discounts)||0);
     
     if (window.settlementMode === 'complete') {
         if (Math.round(activeSettlementTicket.grandTotal) > Math.round(totalPaidNow)) {
