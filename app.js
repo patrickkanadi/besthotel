@@ -2460,7 +2460,7 @@ window.openShiftReport = async function() {
         }
     });
     let combinedOrders = Array.from(allOrdersMap.values());
-    let shiftOrders = combinedOrders.filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided" && o.orderStatus !== "Void Pending");
+    let shiftOrders = combinedOrders.filter(o => o.shiftId === currentShiftId && o.orderStatus !== "Voided");
     
     let allExpMap = new Map();
     (window.globalRecentExpenses || []).forEach(se => allExpMap.set(se.expenseId, se));
