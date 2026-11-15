@@ -17,6 +17,8 @@ let activeNumpadItem = null; let numpadValue = "0"; let activeSettlementTicket =
 window.masterDrawerBalanceLaundry = 0;
 window.masterDrawerBalanceHotel = 0;
 let isLoggingOut = false; let isMenuLocked = true; let isSyncing = false;
+let activeSyncPromise = null;
+let syncAgainRequested = false;
 
 window.globalRoomList = [];
 window.globalRecentOrders = [];
@@ -958,7 +960,8 @@ window.switchAntrean = function(index) {
     antreans[currentAntreanIndex].cart = [...currentCart];
     antreans[currentAntreanIndex].isLocked = isMenuLocked;
     
-    let ri = document.getElementById("room-input"); if (ri) antreans[currentAntreanIndex].room = ri.value;
+    let ri = document.getElementById("room-input"); 
+    if (ri && isMenuLocked) antreans[currentAntreanIndex].room = ri.value;
     
     currentAntreanIndex = index;
     currentCart = [...antreans[currentAntreanIndex].cart]; 
@@ -1334,6 +1337,12 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
     let free = Number(document.getElementById("pay-free").value) || 0;
     
     let totalPaid = cashL + cashH + qrisL + qrisH + transfer + debit;
+    if (Math.round(totalPaid) > Math.round(window.cartGrandTotal)) {
+        return alert(
+            `⚠️ Total pembayaran (Rp ${totalPaid.toLocaleString('id-ID')}) melebihi Total Tagihan (Rp ${window.cartGrandTotal.toLocaleString('id-ID')})!\n\n` +
+            `Masukkan nominal Uang Pas (setelah dikurangi kembalian) pada kolom Tunai / Cash.`
+        );
+    }
     let payLaterEnabled = window.globalSettings && String(window.globalSettings["Enable_Pay_Later"]).toUpperCase() !== "FALSE";
 
     // 1. Cek Kasbon / Belum Lunas
@@ -1406,7 +1415,7 @@ window.renderActiveTickets = function() {
         window.activeLaundryTickets.forEach((ticket) => { 
             try { 
                 const isReady = ticket.orderStatus === "Ready for Pickup"; 
-                const totalPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.qrisHotelAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.debitAmount)||0) + (Number(ticket.freeAmount)||0); 
+                const totalPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.qrisHotelAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.debitAmount)||0); 
                 const remaining = ticket.grandTotal - totalPaid;
                 let receiptText = ticket.readableReceipt || ""; 
                 if (!receiptText && Array.isArray(ticket.items)) { 
@@ -1510,6 +1519,25 @@ window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) {
     document.getElementById("settlement-modal").classList.remove("hidden");
 };
 
+window.calculateSettlementRemaining = function() {
+    if (!activeSettlementTicket) return;
+    const paidBefore = (Number(activeSettlementTicket.cashLaundryAmount)||0) + 
+                       (Number(activeSettlementTicket.cashHotelAmount)||0) + 
+                       (Number(activeSettlementTicket.qrisAmount)||0) + 
+                       (Number(activeSettlementTicket.qrisHotelAmount)||0) + 
+                       (Number(activeSettlementTicket.transferAmount)||0) + 
+                       (Number(activeSettlementTicket.debitAmount)||0);
+    const remainingDue = Math.max(0, (Number(activeSettlementTicket.grandTotal)||0) - paidBefore);
+
+    const qL = Number(document.getElementById("settle-qris")?.value) || 0;
+    const qH = Number(document.getElementById("settle-qris-hotel")?.value) || 0;
+    const t = Number(document.getElementById("settle-transfer")?.value) || 0;
+    const d = Number(document.getElementById("settle-debit")?.value) || 0;
+
+    const remCash = Math.max(0, remainingDue - qL - qH - t - d);
+    document.getElementById("settle-cash").value = remCash.toFixed(0);
+};
+
 window.confirmSettlement = function() {
     if (!activeSettlementTicket) return;
     const cash = Number(document.getElementById("settle-cash").value) || 0; 
@@ -1567,7 +1595,12 @@ window.confirmSettlement = function() {
     activeSettlementTicket.debitAmount = (activeSettlementTicket.debitAmount || 0) + d;
     activeSettlementTicket.shiftId = currentShiftId;
     
-    let totalPaidNow = (Number(activeSettlementTicket.cashHotelAmount)||0) + (Number(activeSettlementTicket.cashLaundryAmount)||0) + (Number(activeSettlementTicket.qrisAmount)||0) + (Number(activeSettlementTicket.qrisHotelAmount)||0) + (Number(activeSettlementTicket.transferAmount)||0) + (Number(activeSettlementTicket.debitAmount)||0) + (Number(activeSettlementTicket.discounts)||0);
+    let totalPaidNow = (Number(activeSettlementTicket.cashHotelAmount)||0) + 
+                       (Number(activeSettlementTicket.cashLaundryAmount)||0) + 
+                       (Number(activeSettlementTicket.qrisAmount)||0) + 
+                       (Number(activeSettlementTicket.qrisHotelAmount)||0) + 
+                       (Number(activeSettlementTicket.transferAmount)||0) + 
+                       (Number(activeSettlementTicket.debitAmount)||0);
     
     if (window.settlementMode === 'complete') {
         if (Math.round(activeSettlementTicket.grandTotal) > Math.round(totalPaidNow)) {
@@ -1858,7 +1891,11 @@ window.submitCashDrop = function() {
     const payload = { dropId: "DRP-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId, drawer: drawer, amount: amount, notes: document.getElementById("drop-notes").value || "-", syncStatus: "Pending" };
     db.transaction(["cash_drops"], "readwrite").objectStore("cash_drops").add(payload);
     
-    document.getElementById("cash-drop-modal").classList.add("hidden"); alert("Setoran berhasil dicatat!"); window.runBackgroundSync();
+    document.getElementById("cash-drop-modal").classList.add("hidden");
+    document.getElementById("drop-amount").value = "";
+    document.getElementById("drop-notes").value = "";
+    alert("Setoran berhasil dicatat!"); 
+    window.runBackgroundSync();
 };
 
 // Membuka modal dan mereset semua field
@@ -2080,6 +2117,7 @@ window.syncMasterData = async function(forceAwait = false) {
                 window.renderActiveTickets(); 
                 window.extractUnpaidOrders(); 
             } 
+            await window.updatePendingSyncUI(); // ✅ Cek apakah masih ada antrean Pending
             if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71";
         } 
     } catch (e) { 
@@ -2152,56 +2190,127 @@ window.manualPushSync = async function() {
     alert("Sinkronisasi Database Berhasil!"); 
 };
 
+window.getPendingSyncCount = async function() {
+    if (!db) return 0;
+    const countPending = (storeName, checkStatusField) => new Promise(res => {
+        try {
+            db.transaction([storeName], "readonly").objectStore(storeName).getAll().onsuccess = e => {
+                let list = e.target.result || [];
+                if (checkStatusField) res(list.filter(x => x.syncStatus === "Pending").length);
+                else res(list.length);
+            };
+        } catch (err) { res(0); }
+    });
+
+    const counts = await Promise.all([
+        countPending("orders", true),
+        countPending("expenses", true),
+        countPending("cash_drops", false),
+        countPending("shift_reports", false),
+        countPending("void_requests", false),
+        countPending("stock_inbounds", false),
+        countPending("stock_opnames", false)
+    ]);
+    return counts.reduce((a, b) => a + b, 0);
+};
+
+window.updatePendingSyncUI = async function() {
+    let pending = await window.getPendingSyncCount();
+    let nTxt = document.getElementById("network-text");
+    let nDot = document.getElementById("network-dot");
+    let loginTxt = document.getElementById("login-network-text");
+    let loginDot = document.getElementById("login-network-dot");
+
+    if (!navigator.onLine) {
+        let msg = pending > 0 ? `Offline (${pending} Antrean)` : "Mode Offline";
+        if (nTxt) nTxt.innerText = msg;
+        if (nDot) nDot.style.backgroundColor = "#e74c3c";
+        if (loginTxt) loginTxt.innerText = msg;
+        if (loginDot) loginDot.style.backgroundColor = "#e74c3c";
+        return pending;
+    }
+
+    if (pending > 0) {
+        let msg = `⚠️ ${pending} Data Belum Masuk Sheet`;
+        if (nTxt) nTxt.innerText = msg;
+        if (nDot) nDot.style.backgroundColor = "#f39c12";
+        if (loginTxt) loginTxt.innerText = msg;
+        if (loginDot) loginDot.style.backgroundColor = "#f39c12";
+    } else {
+        if (nTxt) nTxt.innerText = "Online & Sinkron";
+        if (nDot) nDot.style.backgroundColor = "#2ecc71";
+        if (loginTxt) loginTxt.innerText = "Online & Semua Data Sinkron";
+        if (loginDot) loginDot.style.backgroundColor = "#2ecc71";
+    }
+    return pending;
+};
+
 window.runBackgroundSync = async function() { 
-    if (!navigator.onLine || isSyncing) return; 
-    isSyncing = true;  
-    try { 
-        const syncItem = async (storeName, actionName, idField, deleteOnSuccess = false) => {
-            let items = await new Promise(res => db.transaction([storeName], "readonly").objectStore(storeName).getAll().onsuccess = e => res(e.target.result));
-            
-            for (const item of items) {
-                if (item.syncStatus === "Pending" || deleteOnSuccess) { 
-                    try {
-                        // ✅ FIX: Hapus mode: 'no-cors' karena membuat response gagal terbaca
-                        let r = await fetch(API_URL, { 
-                            method: 'POST', 
-                            redirect: 'follow',
-                            headers: { "Content-Type": "text/plain;charset=utf-8" },
-                            body: JSON.stringify({ action: actionName, data: item }) 
-                        });
-                        
-                        if (!r.ok) throw new Error("Network Error");
-                        
-                        let rawText = await r.text();
-                        let resData = JSON.parse(rawText);
-                        
-                        if (resData && resData.status === "Success") {
-                            if (deleteOnSuccess) {
-                                db.transaction([storeName], "readwrite").objectStore(storeName).delete(item[idField]);
-                            } else {
-                                item.syncStatus = "Synced"; 
-                                db.transaction([storeName], "readwrite").objectStore(storeName).put(item); 
+    if (!navigator.onLine) {
+        await window.updatePendingSyncUI();
+        return false;
+    }
+    // Jika sync sedang berjalan, antrekan ulang & tunggu promise yang aktif selesai
+    if (activeSyncPromise) {
+        syncAgainRequested = true;
+        return await activeSyncPromise;
+    }
+
+    activeSyncPromise = (async () => {
+        isSyncing = true;  
+        try { 
+            const syncItem = async (storeName, actionName, idField, deleteOnSuccess = false) => {
+                let items = await new Promise(res => db.transaction([storeName], "readonly").objectStore(storeName).getAll().onsuccess = e => res(e.target.result));
+                
+                for (const item of items) {
+                    if (item.syncStatus === "Pending" || deleteOnSuccess) { 
+                        try {
+                            let r = await fetch(API_URL, { 
+                                method: 'POST', 
+                                redirect: 'follow',
+                                headers: { "Content-Type": "text/plain;charset=utf-8" },
+                                body: JSON.stringify({ action: actionName, data: item }) 
+                            });
+                            
+                            if (!r.ok) throw new Error("Network Error");
+                            
+                            let rawText = await r.text();
+                            let resData = JSON.parse(rawText);
+                            
+                            if (resData && resData.status === "Success") {
+                                if (deleteOnSuccess) {
+                                    db.transaction([storeName], "readwrite").objectStore(storeName).delete(item[idField]);
+                                } else {
+                                    item.syncStatus = "Synced"; 
+                                    db.transaction([storeName], "readwrite").objectStore(storeName).put(item); 
+                                }
                             }
+                        } catch(e) {
+                            console.error("Gagal sinkronisasi antrean:", storeName, e);
                         }
-                    } catch(e) {
-                        console.error("Gagal sinkronisasi antrean:", storeName, e);
                     }
                 }
-            }
-        };
+            };
 
-        // Eksekusi semua antrean secara berurutan
-        await syncItem("orders", "syncOrder", "orderId");
-        await syncItem("expenses", "syncExpense", "expenseId");
-        await syncItem("cash_drops", "syncCashDrop", "dropId", true);
-        await syncItem("shift_reports", "syncShiftReport", "shiftId", true);
-        await syncItem("void_requests", "requestVoid", "id", true);
-        await syncItem("stock_inbounds", "confirmInbound", "inboundId", true);
-        await syncItem("stock_opnames", "syncOpname", "opnameId", true);
+            do {
+                syncAgainRequested = false;
+                await syncItem("orders", "syncOrder", "orderId");
+                await syncItem("expenses", "syncExpense", "expenseId");
+                await syncItem("cash_drops", "syncCashDrop", "dropId", true);
+                await syncItem("shift_reports", "syncShiftReport", "shiftId", true);
+                await syncItem("void_requests", "requestVoid", "id", true);
+                await syncItem("stock_inbounds", "confirmInbound", "inboundId", true);
+                await syncItem("stock_opnames", "syncOpname", "opnameId", true);
+            } while (syncAgainRequested && navigator.onLine);
 
-    } finally {  
-        isSyncing = false;  
-    } 
+        } finally {  
+            isSyncing = false;
+            activeSyncPromise = null;
+            await window.updatePendingSyncUI();
+        }
+    })();
+
+    return await activeSyncPromise;
 };
 
 // ==========================================
@@ -2431,10 +2540,10 @@ window.openShiftReport = async function() {
     let originalText = btn ? btn.innerText : "📊 Shift";
     
     if (navigator.onLine) {
-        if (btn) btn.innerText = "⏳ Mengambil Data...";
+        if (btn) btn.innerText = "⏳ Menyinkronkan Data...";
         
-        // 1. Biarkan push berjalan di background tanpa membekukan layar
-        window.runBackgroundSync(); 
+        // 1. TUNGGU semua order lokal terkirim ke Spreadsheet terlebih dahulu!
+        await window.runBackgroundSync(); 
         
         // 2. TUNGGU proses pull selesai agar transaksi dari komputer lain masuk!
         await window.syncMasterData(true); 
@@ -2601,6 +2710,24 @@ window.triggerEndShift = async function(isAutoClose = false) {
     
     if (!isAutoClose) {
         if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
+
+        // ✅ GATEKEEPER: Pastikan 0 data Pending sebelum shift ditutup!
+        let endBtn = document.getElementById("btn-end-shift");
+        let origBtnText = endBtn ? endBtn.innerText : "Akhiri Shift & Simpan Laporan";
+        if (endBtn) { endBtn.innerText = "⏳ Memastikan Semua Order Masuk Sheet..."; endBtn.disabled = true; }
+
+        await window.runBackgroundSync();
+        let unsyncedCount = await window.getPendingSyncCount();
+
+        if (endBtn) { endBtn.innerText = origBtnText; endBtn.disabled = false; }
+
+        if (unsyncedCount > 0) {
+            return alert(
+                `⚠️ SHIFT BELUM BISA DITUTUP!\n\n` +
+                `Masih ada ${unsyncedCount} transaksi/data yang BELUM masuk ke Spreadsheet (koneksi internet terputus atau server sedang sibuk).\n\n` +
+                `Pastikan koneksi internet tablet stabil, lalu klik 'Akhiri Shift' kembali agar tidak ada selisih laporan.`
+            );
+        }
         
         // Patuhi Dropdown Global saat End Shift Manual
         if (window.currentPrintMode === 'desktop') {
