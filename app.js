@@ -1,6 +1,6 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbzWjh26CQ--TR0cWM3ULEHpMDsZ6QnDQ-pOSK3SKU7OcJLWk3eDgqWXVvyp1GsaYo0XCw/exec"; // REPLACE THIS
 const DB_NAME = "Hotel_POS";
-const DB_VERSION = 5; 
+const DB_VERSION = 6; 
 let db;
 
 let antreans = [
@@ -1545,6 +1545,26 @@ window.confirmSettlement = function() {
     const qH = Number(document.getElementById("settle-qris-hotel")?.value) || 0; 
     const t = Number(document.getElementById("settle-transfer").value) || 0;
     const d = Number(document.getElementById("settle-debit")?.value) || 0;
+
+    const newPaymentTotal = cash + qL + qH + t + d;
+    if (newPaymentTotal <= 0) {
+        return alert("⚠️ Silakan masukkan nominal pembayaran pelunasan.");
+    }
+
+    const paidBefore = (Number(activeSettlementTicket.cashLaundryAmount)||0) + 
+                       (Number(activeSettlementTicket.cashHotelAmount)||0) + 
+                       (Number(activeSettlementTicket.qrisAmount)||0) + 
+                       (Number(activeSettlementTicket.qrisHotelAmount)||0) + 
+                       (Number(activeSettlementTicket.transferAmount)||0) + 
+                       (Number(activeSettlementTicket.debitAmount)||0);
+    const remainingDue = Math.max(0, (Number(activeSettlementTicket.grandTotal)||0) - paidBefore);
+
+    if (Math.round(newPaymentTotal) > Math.round(remainingDue)) {
+        return alert(
+            `⚠️ Nominal pelunasan (Rp ${newPaymentTotal.toLocaleString('id-ID')}) melebihi Sisa Tagihan (Rp ${remainingDue.toLocaleString('id-ID')})!\n\n` +
+            `Masukkan nominal pas (setelah dikurangi kembalian).`
+        );
+    }
     
     let cLTotal = 0; let cHTotal = 0;
     if (activeSettlementTicket.items && activeSettlementTicket.items.length > 0) {
@@ -2117,8 +2137,7 @@ window.syncMasterData = async function(forceAwait = false) {
                 window.renderActiveTickets(); 
                 window.extractUnpaidOrders(); 
             } 
-            await window.updatePendingSyncUI(); // ✅ Cek apakah masih ada antrean Pending
-            if(nTxt) nTxt.innerText = "Online & Sinkron"; if(nDot) nDot.style.backgroundColor = "#2ecc71";
+            await window.updatePendingSyncUI();
         } 
     } catch (e) { 
         if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; 
@@ -2578,7 +2597,7 @@ window.openShiftReport = async function() {
             allExpMap.set(le.expenseId, le);
         }
     });
-    let shiftExpenses = Array.from(allExpMap.values()).filter(e => e.shiftId === currentShiftId && e.status !== "Voided" && e.status !== "Void Pending");
+    let shiftExpenses = Array.from(allExpMap.values()).filter(e => e.shiftId === currentShiftId && e.status !== "Voided");
     
     let allDropsMap = new Map();
     (window.globalRecentDrops || []).forEach(sd => allDropsMap.set(sd.dropId, sd));
@@ -2809,6 +2828,13 @@ window.onload = async () => {
             let activeOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result));
             let shiftOrders = activeOrders.filter(o => o.shiftId === currentShiftId);
             
+            // Jangan auto-logout jika masih ada transaksi offline/pending yang belum masuk ke Google Sheets
+            let pendingCount = await window.getPendingSyncCount();
+            if (pendingCount > 0 || !navigator.onLine) {
+                await window.runBackgroundSync();
+                return;
+            }
+
             if (shiftOrders.length === 0) {
                 db.transaction(["active_shifts"], "readwrite").objectStore("active_shifts").delete(currentPin);
                 alert("Sistem mendeteksi shift kosong tanpa aktivitas. Logout otomatis.");
