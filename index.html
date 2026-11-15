@@ -151,6 +151,7 @@
                     <option value="bluetooth">🖨️ Mode Bluetooth</option>
                     <option value="desktop">🖨️ Mode A4 (Kertas Split)</option>
                 </select>
+                <button class="btn-top" id="btn-printer" style="background:#34495e; border-color:#34495e;" onclick="connectBluetoothPrinter()">🖨️ Printer: Offline</button>
                 <button class="btn-top" style="background:#34495e; border-color:#34495e;" onclick="manualPushSync()">🔄 Sinkron</button>
                 <button class="btn-top" style="background:#9b59b6; border-color:#9b59b6;" onclick="openInboundModal()">📦 Stok Masuk</button>
                 <button id="btn-emergency-inbound" onclick="window.openEmergencyInbound()" style="background:#e67e22; color:white; border:none; padding:10px 15px; border-radius:8px; font-weight:bold; cursor:pointer;">🚨 Inbound Darurat</button>
@@ -321,19 +322,19 @@
             </div>
             <div class="form-box" style="margin-bottom:10px;">
                 <label>QRIS (Khusus Laundry)</label>
-                <input type="number" id="settle-qris" value="0" onclick="this.select()">
+                <input type="number" id="settle-qris" value="0" onclick="this.select()" oninput="calculateSettlementRemaining()">
             </div>
             <div class="form-box" style="margin-bottom:10px;">
                 <label style="color:#e67e22;">QRIS (Khusus Hotel)</label>
-                <input type="number" id="settle-qris-hotel" value="0" onclick="this.select()">
+                <input type="number" id="settle-qris-hotel" value="0" onclick="this.select()" oninput="calculateSettlementRemaining()">
             </div>
             <div class="form-box" style="margin-bottom:10px;">
                 <label>Transfer (Khusus Hotel)</label>
-                <input type="number" id="settle-transfer" value="0" onclick="this.select()">
+                <input type="number" id="settle-transfer" value="0" onclick="this.select()" oninput="calculateSettlementRemaining()">
             </div>
             <div class="form-box" style="margin-bottom:10px;">
                 <label>Debit (Khusus Hotel)</label>
-                <input type="number" id="settle-debit" value="0" onclick="this.select()">
+                <input type="number" id="settle-debit" value="0" onclick="this.select()" oninput="calculateSettlementRemaining()">
             </div>
             <div style="display:flex; gap:10px; margin-top:20px;">
                 <button onclick="document.getElementById('settlement-modal').classList.add('hidden')" style="flex:1; padding:12px; background:#ecf0f1; border:none; border-radius:8px; font-weight:bold;">Batal</button>
