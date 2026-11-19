@@ -25,14 +25,12 @@ window.globalRecentOrders = [];
 window.globalRecentExpenses = [];
 window.globalRecentShifts = [];
 window.globalPendingInbounds = [];
-window.globalRoomList = [];
-window.globalRecentOrders = [];
-window.globalRecentExpenses = [];
-window.globalRecentShifts = [];
-window.globalRecentDrops = []; // ✅ NEW
+window.globalRecentDrops = [];
 window.globalSettings = {};
 window.activeUnpaidOrders = [];
+window.globalUnpaidOrders = [];
 window.settlementMode = 'complete';
+window.hasSyncedMasterOnce = false;
 
 let btDevice = null; let btCharacteristic = null;
 window.lastActivityWrite = Date.now();
@@ -55,7 +53,7 @@ window.setPrintMode = function(mode) {
 // ==========================================
 // ENGINE A4 PRINT (QUARTER & SINGLE LAYOUT)
 // ==========================================
-window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 'quarter') {
+window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 'quarter', onAfterPrint = null) {
     let printArea = document.getElementById("print-area");
     if (!printArea) return alert("Error: Area print tidak ditemukan di HTML.");
 
@@ -105,7 +103,14 @@ window.printStandardGlobal = function(title, contentHtml, totalHtml, layout = 'q
         `;
     }
 
-    setTimeout(() => { window.print(); }, 250);
+    if (typeof onAfterPrint === 'function') {
+        let finished = false;
+        const done = () => { if (!finished) { finished = true; onAfterPrint(); } };
+        window.addEventListener('afterprint', done, { once: true });
+        setTimeout(() => { window.print(); }, 250);
+    } else {
+        setTimeout(() => { window.print(); }, 250);
+    }
 };
 
 window.printOrderStandard = function(orderId) {
@@ -195,7 +200,7 @@ window.printExpenseStandard = function(expId) {
     window.printStandardGlobal("BUKTI PENGELUARAN", content, total, "quarter");
 };
 
-window.printShiftStandard = function(shiftId) {
+window.printShiftStandard = function(shiftId, onAfterPrint = null) {
     let s = window.globalRecentShifts.find(x => x.shiftId === shiftId);
     if (!s && window.currentShiftData && window.currentShiftData.shiftId === shiftId) s = window.currentShiftData;
     if (!s) return alert("Data shift tidak ditemukan.");
@@ -278,7 +283,7 @@ window.printShiftStandard = function(shiftId) {
         </table>
     `;
     
-    window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "single");
+    window.printStandardGlobal("LAPORAN TUTUP SHIFT", content, total, "single", onAfterPrint);
 };
 
 // 1. INIT DB
@@ -348,7 +353,8 @@ window.installPWA = function() {
 };
 
 async function hashString(str) {
-    const msgUint8 = new TextEncoder().encode(str); const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+    const salted = "BESTHOTEL_POS_SALT_2026::" + String(str);
+    const msgUint8 = new TextEncoder().encode(salted); const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
     const hashArray = Array.from(new Uint8Array(hashBuffer)); return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 function formatWIB(dateString) { return new Date(dateString).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).replace(',', '') + ' WIB'; }
@@ -561,127 +567,7 @@ window.buildShiftReportReceipt = async function(data) {
 };
 
 // ==========================================
-// FIX: SETTLEMENT / PELUNASAN MODAL
-// ==========================================
-
-// ==========================================
-// FIX: INSTANT UI REFRESH & PRECISE COLUMN G UPDATE
-// ==========================================
-
-window.printSettlement = async function() {
-    if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
-    let ticket = window.activeSettlementTicket;
-    
-    // Safety Net: Bangun teks nota jika belum ada
-    if (!ticket.readableReceipt && ticket.items && ticket.items.length > 0) {
-        ticket.readableReceipt = ticket.items.map(i => {
-            let qty = i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty;
-            let priceToUse = Number(i.price) || Number(i.originalPrice) || 0;
-            return `${qty}x ${i.name} (Rp ${(i.qty * priceToUse).toLocaleString('id-ID')})`;
-        }).join('\n');
-    }
-
-    let cashL = Number(document.getElementById("settle-cash-laundry")?.value || document.getElementById("settlement-cash-laundry")?.value || 0);
-    let cashH = Number(document.getElementById("settle-cash-hotel")?.value || document.getElementById("settlement-cash-hotel")?.value || 0);
-    let qris = Number(document.getElementById("settle-qris")?.value || document.getElementById("settlement-qris")?.value || 0);
-    let trf = Number(document.getElementById("settle-transfer")?.value || document.getElementById("settlement-transfer")?.value || 0);
-    
-    if (cashL === 0 && cashH === 0) cashL = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
-
-    ticket.cashLaundryAmount = (Number(ticket.cashLaundryAmount)||0) + cashL;
-    ticket.cashHotelAmount = (Number(ticket.cashHotelAmount)||0) + cashH;
-    ticket.qrisAmount = (Number(ticket.qrisAmount)||0) + qris;
-    ticket.transferAmount = (Number(ticket.transferAmount)||0) + trf;
-    
-    let allPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0);
-
-    if (allPaid >= ticket.grandTotal) {
-        ticket.orderStatus = "Completed";
-        // Instan hapus dari memori UI agar layar langsung bersih
-        window.activeLaundryTickets = window.activeLaundryTickets.filter(t => t.orderId !== ticket.orderId);
-    }
-    ticket.syncStatus = "Pending";
-    db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
-
-    alert("Order is confirmed and print");
-
-    let mod = document.getElementById("settlement-modal") || document.getElementById("rincian-pembayaran-modal");
-    if(mod) mod.classList.add("hidden");
-
-    if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
-    if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
-    
-    // Tembak Quick Update di background dengan menyertakan Nota untuk Kolom H
-    fetch(API_URL, { 
-        method: 'POST', 
-        redirect: 'follow',
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed", readableReceipt: ticket.readableReceipt }) 
-    }).catch(e => console.log(e));
-
-    // Jeda 3 detik sebelum background sync besar
-    setTimeout(() => { if (typeof window.runBackgroundSync === 'function') window.runBackgroundSync(); }, 3000);
-    
-    await window.printOrderGlobal(ticket.orderId);
-    setTimeout(() => { if (typeof window.switchTab === 'function') window.switchTab('pos'); }, 300);
-};
-
-window.submitSettlement = function() {
-    if (!window.activeSettlementTicket) return alert("⚠️ Tidak ada tiket yang dipilih.");
-    let ticket = window.activeSettlementTicket;
-    
-    if (!ticket.readableReceipt && ticket.items && ticket.items.length > 0) {
-        ticket.readableReceipt = ticket.items.map(i => {
-            let qty = i.qty % 1 !== 0 ? i.qty.toFixed(2) : i.qty;
-            let priceToUse = Number(i.price) || Number(i.originalPrice) || 0;
-            return `${qty}x ${i.name} (Rp ${(i.qty * priceToUse).toLocaleString('id-ID')})`;
-        }).join('\n');
-    }
-    
-    let cashL = Number(document.getElementById("settle-cash-laundry")?.value || document.getElementById("settlement-cash-laundry")?.value || 0);
-    let cashH = Number(document.getElementById("settle-cash-hotel")?.value || document.getElementById("settlement-cash-hotel")?.value || 0);
-    let qris = Number(document.getElementById("settle-qris")?.value || document.getElementById("settlement-qris")?.value || 0);
-    let trf = Number(document.getElementById("settle-transfer")?.value || document.getElementById("settlement-transfer")?.value || 0);
-    
-    if (cashL === 0 && cashH === 0) cashL = Number(document.getElementById("settle-cash")?.value || document.getElementById("settlement-cash")?.value || 0);
-
-    let totalPay = cashL + cashH + qris + trf;
-    if (totalPay <= 0) return alert("⚠️ Silakan masukkan nominal pembayaran pelunasan.");
-
-    ticket.cashLaundryAmount = (Number(ticket.cashLaundryAmount)||0) + cashL;
-    ticket.cashHotelAmount = (Number(ticket.cashHotelAmount)||0) + cashH;
-    ticket.qrisAmount = (Number(ticket.qrisAmount)||0) + qris;
-    ticket.transferAmount = (Number(ticket.transferAmount)||0) + trf;
-    
-    // ✅ BUG 3 FIX: Assign ticket to the current shift where the cash was physically received
-    ticket.shiftId = currentShiftId;
-    
-    let allPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.freeAmount)||0);
-
-    if (allPaid >= ticket.grandTotal) {
-        ticket.orderStatus = "Completed";
-        window.activeLaundryTickets = window.activeLaundryTickets.filter(t => t.orderId !== ticket.orderId);
-    }
-    ticket.syncStatus = "Pending";
-    db.transaction(["orders"], "readwrite").objectStore("orders").put(ticket);
-
-    alert("Order is recorded");
-    
-    let mod = document.getElementById("settlement-modal") || document.getElementById("rincian-pembayaran-modal");
-    if(mod) mod.classList.add("hidden");
-
-    if (typeof window.renderActiveTickets === 'function') window.renderActiveTickets();
-    if (typeof window.extractUnpaidOrders === 'function') window.extractUnpaidOrders();
-    
-    fetch(API_URL, { 
-        method: 'POST', mode: 'cors', 
-        body: JSON.stringify({ action: "updateOrderStatus", orderId: ticket.orderId, status: "Completed", readableReceipt: ticket.readableReceipt }) 
-    }).catch(e => console.log(e));
-
-    setTimeout(() => { if (typeof window.runBackgroundSync === 'function') window.runBackgroundSync(); }, 3000);
-    
-    if (typeof window.switchTab === 'function') window.switchTab('pos');
-};
+// Legacy printSettlement / submitSettlement removed; active flow uses window.confirmSettlement
 
 window.updateTabLabels = function() {
     const btns = document.querySelectorAll(".antrean-btn");
@@ -881,13 +767,19 @@ window.attemptLogin = async function() {
 
         if (staff) { 
             currentCashier = staff.name; currentPin = hashedPin; 
+
+            // Pastikan daftar shift server sudah tertarik sebelum membuat Shift ID (cegah bentrok Shift 2)
+            if (navigator.onLine && !window.hasSyncedMasterOnce) {
+                if(loginBtn) loginBtn.innerText = "Menyinkronkan Riwayat Shift...";
+                await window.syncMasterData(true);
+            }
             
             let now = new Date(); 
             let dateCode = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0'); 
             let safeName = currentCashier.substring(0, 5).replace(/[^a-zA-Z0-9]/g, '').toUpperCase(); 
             let baseShiftId = `SHF-${safeName}-${dateCode}`; 
             
-            let serverClosedCount = (window.globalRecentShifts || []).filter(s => s.cashier === currentCashier && s.shiftId.startsWith(baseShiftId)).length; 
+            let serverClosedCount = (window.globalRecentShifts || []).filter(s => s.cashier === currentCashier && s.shiftId.startsWith(baseShiftId)).length;
             let localShifts = await new Promise(res => db.transaction(["local_shift_history"], "readonly").objectStore("local_shift_history").getAll().onsuccess = e => res(e.target.result)); 
             let localClosedCount = localShifts.filter(s => s.cashier === currentCashier && s.shiftId.startsWith(baseShiftId)).length; 
             
@@ -1263,10 +1155,28 @@ window.openReview = function() {
         else btnPayLater.classList.add("hidden");
     }
 
+    let recEl = document.getElementById("pay-received"); if (recEl) recEl.value = "";
+    let chgEl = document.getElementById("pay-change"); if (chgEl) chgEl.innerText = "Rp 0";
     window.calculateRemaining();
     let mod = document.getElementById("review-modal"); if(mod) mod.classList.remove("hidden");
 };
 window.closeReview = function() { let reviewModal = document.getElementById("review-modal"); if (reviewModal) { reviewModal.classList.add("hidden"); } };
+
+window.calcCheckoutChange = function() {
+    let cashNeeded = Number(document.getElementById("pay-cash")?.value) || 0;
+    let received = Number(document.getElementById("pay-received")?.value) || 0;
+    let change = Math.max(0, received - cashNeeded);
+    let el = document.getElementById("pay-change");
+    if (el) el.innerText = "Rp " + change.toLocaleString('id-ID');
+};
+
+window.calcSettleChange = function() {
+    let cashNeeded = Number(document.getElementById("settle-cash")?.value) || 0;
+    let received = Number(document.getElementById("settle-received")?.value) || 0;
+    let change = Math.max(0, received - cashNeeded);
+    let el = document.getElementById("settle-change");
+    if (el) el.innerText = "Rp " + change.toLocaleString('id-ID');
+};
 
 window.calculateRemaining = function(manualCash = false) {
     let free = Number(document.getElementById("pay-free").value) || 0;
@@ -1354,6 +1264,16 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
         }
     }
 
+    // 1b. Alasan wajib jika ada Diskon / Free (P2)
+    let discountReason = "";
+    if (free > 0) {
+        discountReason = prompt("Masukkan Alasan Diskon / Free (Wajib diisi):");
+        if (!discountReason || discountReason.trim() === "") {
+            return alert("⚠️ Alasan Diskon / Free wajib diisi sebelum melanjutkan transaksi.");
+        }
+        discountReason = discountReason.trim();
+    }
+
     // 2. Siapkan Data Order
     let roomNumber = antreans[currentAntreanIndex].room || "Tamu Umum";
     let hasTicketItem = currentCart.some(i => i.workflow === "TICKET");
@@ -1361,14 +1281,23 @@ window.finalizeOrder = async function(shouldPrint, skipUnpaidPrompt = false) {
 
     const orderPayload = {
         orderId: "ORD-" + Date.now(), timestamp: new Date().toISOString(), cashier: currentCashier, shiftId: currentShiftId,
-        roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, readableReceipt: currentCart.map(i => `${i.qty}x ${i.name}`).join('\n'),
-        subtotal: window.cartSubtotal, discounts: free, grandTotal: window.cartGrandTotal,
+        roomNumber: roomNumber, orderStatus: finalStatus, items: currentCart, readableReceipt: currentCart.map(i => `${i.qty}x ${i.name}`).join('\n') + (discountReason ? `\n[Diskon: ${discountReason}]` : ""),
+        subtotal: window.cartSubtotal, discounts: free, discountReason: discountReason, grandTotal: window.cartGrandTotal,
         paymentMethod: "Split", cashLaundryAmount: cashL, cashHotelAmount: cashH, qrisAmount: qrisL, qrisHotelAmount: qrisH, transferAmount: transfer, debitAmount: debit, freeAmount: free, syncStatus: "Pending" 
     };
 
-    // 3. Simpan ke Database Lokal & Memori
-    // 1. Simpan ke database lokal
-    db.transaction(["orders"], "readwrite").objectStore("orders").add(orderPayload);
+    // 3. Simpan ke Database Lokal & Kurangi Stok Tablet secara Instan (P0)
+    let txOrder = db.transaction(["orders", "menu"], "readwrite");
+    txOrder.objectStore("orders").add(orderPayload);
+    currentCart.forEach(cartItem => {
+        if (cartItem.trackStock) {
+            let mItem = globalMenuData.find(m => m.itemId === cartItem.itemId);
+            if (mItem) {
+                mItem.currentStock = Math.max(0, (Number(mItem.currentStock) || 0) - cartItem.qty);
+                txOrder.objectStore("menu").put(mItem);
+            }
+        }
+    });
 
     // 2. Langsung tampilkan di tab "Cucian Aktif" jika status Processing
     if (finalStatus === "Processing" || finalStatus === "Pending Debt") { 
@@ -1415,7 +1344,7 @@ window.renderActiveTickets = function() {
         window.activeLaundryTickets.forEach((ticket) => { 
             try { 
                 const isReady = ticket.orderStatus === "Ready for Pickup"; 
-                const totalPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.qrisHotelAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.debitAmount)||0); 
+                const totalPaid = (Number(ticket.cashLaundryAmount)||0) + (Number(ticket.cashHotelAmount)||0) + (Number(ticket.qrisAmount)||0) + (Number(ticket.qrisHotelAmount)||0) + (Number(ticket.transferAmount)||0) + (Number(ticket.debitAmount)||0) + (Number(ticket.settledAmount)||0);
                 const remaining = ticket.grandTotal - totalPaid;
                 let receiptText = ticket.readableReceipt || ""; 
                 if (!receiptText && Array.isArray(ticket.items)) { 
@@ -1514,6 +1443,8 @@ window.openSettlement = function(orderId, remainingDue, isFromUnpaid = false) {
     if(document.getElementById("settle-qris-hotel")) document.getElementById("settle-qris-hotel").value = 0;
     document.getElementById("settle-transfer").value = 0; 
     if(document.getElementById("settle-debit")) document.getElementById("settle-debit").value = 0;
+    if(document.getElementById("settle-received")) document.getElementById("settle-received").value = "";
+    if(document.getElementById("settle-change")) document.getElementById("settle-change").innerText = "Rp 0";
     
     window.settlementMode = isFromUnpaid ? 'payOnly' : 'complete'; 
     document.getElementById("settlement-modal").classList.remove("hidden");
@@ -1526,7 +1457,8 @@ window.calculateSettlementRemaining = function() {
                        (Number(activeSettlementTicket.qrisAmount)||0) + 
                        (Number(activeSettlementTicket.qrisHotelAmount)||0) + 
                        (Number(activeSettlementTicket.transferAmount)||0) + 
-                       (Number(activeSettlementTicket.debitAmount)||0);
+                       (Number(activeSettlementTicket.debitAmount)||0) +
+                       (Number(activeSettlementTicket.settledAmount)||0);
     const remainingDue = Math.max(0, (Number(activeSettlementTicket.grandTotal)||0) - paidBefore);
 
     const qL = Number(document.getElementById("settle-qris")?.value) || 0;
@@ -1536,6 +1468,7 @@ window.calculateSettlementRemaining = function() {
 
     const remCash = Math.max(0, remainingDue - qL - qH - t - d);
     document.getElementById("settle-cash").value = remCash.toFixed(0);
+    window.calcSettleChange();
 };
 
 window.confirmSettlement = function() {
@@ -1556,7 +1489,8 @@ window.confirmSettlement = function() {
                        (Number(activeSettlementTicket.qrisAmount)||0) + 
                        (Number(activeSettlementTicket.qrisHotelAmount)||0) + 
                        (Number(activeSettlementTicket.transferAmount)||0) + 
-                       (Number(activeSettlementTicket.debitAmount)||0);
+                       (Number(activeSettlementTicket.debitAmount)||0) +
+                       (Number(activeSettlementTicket.settledAmount)||0);
     const remainingDue = Math.max(0, (Number(activeSettlementTicket.grandTotal)||0) - paidBefore);
 
     if (Math.round(newPaymentTotal) > Math.round(remainingDue)) {
@@ -1564,6 +1498,11 @@ window.confirmSettlement = function() {
             `⚠️ Nominal pelunasan (Rp ${newPaymentTotal.toLocaleString('id-ID')}) melebihi Sisa Tagihan (Rp ${remainingDue.toLocaleString('id-ID')})!\n\n` +
             `Masukkan nominal pas (setelah dikurangi kembalian).`
         );
+    }
+
+    const totalPaidAfter = paidBefore + newPaymentTotal;
+    if (window.settlementMode === 'complete' && Math.round(activeSettlementTicket.grandTotal) > Math.round(totalPaidAfter)) {
+        return alert("⚠️ Tagihan belum lunas sepenuhnya! Order tidak bisa diselesaikan hingga LUNAS.");
     }
     
     let cLTotal = 0; let cHTotal = 0;
@@ -1583,9 +1522,9 @@ window.confirmSettlement = function() {
                 else cHTotal += val;
             }
         });
-        if(cLTotal + cHTotal === 0) cHTotal = activeSettlementTicket.subtotal; 
+        if(cLTotal + cHTotal === 0) cHTotal = activeSettlementTicket.subtotal || activeSettlementTicket.grandTotal; 
     } else {
-        cHTotal = activeSettlementTicket.subtotal; 
+        cHTotal = activeSettlementTicket.subtotal || activeSettlementTicket.grandTotal; 
     }
 
     let remLaundry = Math.max(0, cLTotal - (activeSettlementTicket.cashLaundryAmount||0) - (activeSettlementTicket.qrisAmount||0));
@@ -1594,6 +1533,10 @@ window.confirmSettlement = function() {
     let discountLeft = activeSettlementTicket.discounts || 0;
     if (remHotel >= discountLeft) { remHotel -= discountLeft; }
     else { discountLeft -= remHotel; remHotel = 0; remLaundry = Math.max(0, remLaundry - discountLeft); }
+
+    let priorSettled = Number(activeSettlementTicket.settledAmount) || 0;
+    if (remHotel >= priorSettled) { remHotel -= priorSettled; }
+    else { priorSettled -= remHotel; remHotel = 0; remLaundry = Math.max(0, remLaundry - priorSettled); }
 
     remLaundry = Math.max(0, remLaundry - qL);
     remHotel = Math.max(0, remHotel - qH - t - d);
@@ -1607,32 +1550,62 @@ window.confirmSettlement = function() {
         else { newCashH = cash; newCashL = 0; }
     }
 
-    activeSettlementTicket.cashLaundryAmount = (activeSettlementTicket.cashLaundryAmount || 0) + newCashL;
-    activeSettlementTicket.cashHotelAmount = (activeSettlementTicket.cashHotelAmount || 0) + newCashH;
-    activeSettlementTicket.qrisAmount = (activeSettlementTicket.qrisAmount || 0) + qL;
-    activeSettlementTicket.qrisHotelAmount = (activeSettlementTicket.qrisHotelAmount || 0) + qH;
-    activeSettlementTicket.transferAmount = (activeSettlementTicket.transferAmount || 0) + t;
-    activeSettlementTicket.debitAmount = (activeSettlementTicket.debitAmount || 0) + d;
-    activeSettlementTicket.shiftId = currentShiftId;
-    
-    let totalPaidNow = (Number(activeSettlementTicket.cashHotelAmount)||0) + 
-                       (Number(activeSettlementTicket.cashLaundryAmount)||0) + 
-                       (Number(activeSettlementTicket.qrisAmount)||0) + 
-                       (Number(activeSettlementTicket.qrisHotelAmount)||0) + 
-                       (Number(activeSettlementTicket.transferAmount)||0) + 
-                       (Number(activeSettlementTicket.debitAmount)||0);
-    
-    if (window.settlementMode === 'complete') {
-        if (Math.round(activeSettlementTicket.grandTotal) > Math.round(totalPaidNow)) {
-            alert("⚠️ Tagihan belum lunas sepenuhnya! Order tidak bisa diselesaikan hingga LUNAS.");
-            return; 
+    const isCrossShift = activeSettlementTicket.shiftId && activeSettlementTicket.shiftId !== currentShiftId;
+
+    if (isCrossShift) {
+        // ✅ P0 ACCOUNTANT FIX: Jangan timpa Shift ID lama! Catat pelunasan di shift sekarang (STL-)
+        const markDone = window.settlementMode === 'complete';
+        const stlPayload = {
+            orderId: "STL-" + Date.now(),
+            refOrderId: activeSettlementTicket.orderId,
+            markRefCompleted: markDone,
+            timestamp: new Date().toISOString(),
+            cashier: currentCashier,
+            shiftId: currentShiftId,
+            roomNumber: activeSettlementTicket.roomNumber || "Tamu Umum",
+            orderStatus: "Completed",
+            items: [],
+            readableReceipt: `• Pelunasan Nota ${activeSettlementTicket.orderId} (Rp ${newPaymentTotal.toLocaleString('id-ID')})`,
+            subtotal: 0,
+            discounts: 0,
+            grandTotal: 0,
+            paymentMethod: "Settlement",
+            cashLaundryAmount: newCashL,
+            cashHotelAmount: newCashH,
+            qrisAmount: qL,
+            qrisHotelAmount: qH,
+            transferAmount: t,
+            debitAmount: d,
+            freeAmount: 0,
+            syncStatus: "Pending"
+        };
+
+        db.transaction(["orders"], "readwrite").objectStore("orders").add(stlPayload);
+        if (!window.globalRecentOrders) window.globalRecentOrders = [];
+        window.globalRecentOrders.unshift(stlPayload);
+
+        activeSettlementTicket.settledAmount = (Number(activeSettlementTicket.settledAmount) || 0) + newPaymentTotal;
+        if (markDone) {
+            activeSettlementTicket.orderStatus = "Completed";
+            window.activeLaundryTickets = (window.activeLaundryTickets || []).filter(tk => tk.orderId !== activeSettlementTicket.orderId);
         }
-        activeSettlementTicket.orderStatus = "Completed"; 
-        activeLaundryTickets = activeLaundryTickets.filter(tk => tk.orderId !== activeSettlementTicket.orderId);
+    } else {
+        // Pelunasan di shift yang sama: perbarui langsung order asli
+        activeSettlementTicket.cashLaundryAmount = (activeSettlementTicket.cashLaundryAmount || 0) + newCashL;
+        activeSettlementTicket.cashHotelAmount = (activeSettlementTicket.cashHotelAmount || 0) + newCashH;
+        activeSettlementTicket.qrisAmount = (activeSettlementTicket.qrisAmount || 0) + qL;
+        activeSettlementTicket.qrisHotelAmount = (activeSettlementTicket.qrisHotelAmount || 0) + qH;
+        activeSettlementTicket.transferAmount = (activeSettlementTicket.transferAmount || 0) + t;
+        activeSettlementTicket.debitAmount = (activeSettlementTicket.debitAmount || 0) + d;
+        activeSettlementTicket.shiftId = currentShiftId;
+
+        if (window.settlementMode === 'complete') {
+            activeSettlementTicket.orderStatus = "Completed"; 
+            window.activeLaundryTickets = (window.activeLaundryTickets || []).filter(tk => tk.orderId !== activeSettlementTicket.orderId);
+        }
+        activeSettlementTicket.syncStatus = "Pending";
+        db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
     }
-    
-    activeSettlementTicket.syncStatus = "Pending";
-    db.transaction(["orders"], "readwrite").objectStore("orders").put(activeSettlementTicket);
     
     let go = window.globalRecentOrders.find(o => o.orderId === activeSettlementTicket.orderId);
     if (go) Object.assign(go, activeSettlementTicket);
@@ -1680,13 +1653,24 @@ window.saveExpense = function() {
 };
 
 window.requestVoid = function(type, id) {
+    let reason = prompt("Masukkan Alasan Pembatalan / Void (Wajib diisi):");
+    if (reason === null) return;
+    reason = reason.trim();
+    if (!reason) return alert("⚠️ Alasan pembatalan wajib diisi!");
+
+    let prevStatus = "";
+    if (type === 'orders') {
+        let ord = (window.globalRecentOrders || []).find(x => x.orderId === id);
+        if (ord) prevStatus = ord.orderStatus || "Completed";
+    }
+
     let authPin = prompt("Masukkan Master PIN untuk Otorisasi Instan\n(Atau kosongkan & klik OK untuk mengirim permohonan ke Admin):");
     
     if (authPin !== null) {
         if (authPin.trim() !== "") {
             hashString(authPin).then(hashed => {
                 if (hashed === window.globalSettings["Master_PIN"]) {
-                    let payload = { id: id, type: type, status: "Voided", syncStatus: "Pending" };
+                    let payload = { id: id, type: type, status: "Voided", reason: reason, prevStatus: prevStatus, syncStatus: "Pending" };
                     db.transaction(["void_requests"], "readwrite").objectStore("void_requests").add(payload);
                     
                     if(type === 'orders') { 
@@ -1709,7 +1693,7 @@ window.requestVoid = function(type, id) {
                 }
             });
         } else {
-            let payload = { id: id, type: type, status: "Void Pending", syncStatus: "Pending" };
+            let payload = { id: id, type: type, status: "Void Pending", reason: reason, prevStatus: prevStatus, syncStatus: "Pending" };
             db.transaction(["void_requests"], "readwrite").objectStore("void_requests").add(payload);
             
             if(type === 'orders') { 
@@ -2104,30 +2088,64 @@ window.syncMasterData = async function(forceAwait = false) {
         }
         
         if (result.status === "Success") { 
+            window.hasSyncedMasterOnce = true;
             window.globalRecentOrders = result.data.recentOrders || []; 
             window.globalRecentExpenses = result.data.recentExpenses || []; 
             window.globalRecentDrops = result.data.recentDrops || []; 
             window.globalRecentShifts = result.recentShifts || []; 
             window.globalPendingInbounds = result.data.pendingInbounds || []; 
 
+            if (result.data.masterDrawerBalanceLaundry !== undefined) window.masterDrawerBalanceLaundry = result.data.masterDrawerBalanceLaundry;
+            if (result.data.masterDrawerBalanceHotel !== undefined) window.masterDrawerBalanceHotel = result.data.masterDrawerBalanceHotel;
+
             let localOrders = await new Promise(res => db.transaction(["orders"], "readonly").objectStore("orders").getAll().onsuccess = e => res(e.target.result)); 
             let pendingOrders = localOrders.filter(o => o.syncStatus === "Pending");
 
-            let serverActive = result.data.activeLaundryOrders || []; 
-            pendingOrders.forEach(po => { 
-                if (po.orderStatus === "Processing" || po.orderStatus === "Ready for Pickup") { 
-                    if (!serverActive.find(s => s.orderId === po.orderId)) serverActive.unshift(po); 
-                } 
-            }); 
-            window.activeLaundryTickets = serverActive;
+            // ✅ P0 FIX: Refresh live Menu_Master stock while preserving local Pending sales deductions
+            if (Array.isArray(result.data.menuStocks) && globalMenuData.length > 0) {
+                let pendingSoldQty = {};
+                pendingOrders.forEach(po => {
+                    if (!String(po.orderId).startsWith("STL-") && po.orderStatus !== "Voided" && Array.isArray(po.items)) {
+                        po.items.forEach(it => { pendingSoldQty[it.itemId] = (pendingSoldQty[it.itemId] || 0) + (Number(it.qty) || 0); });
+                    }
+                });
+                let stockMap = {};
+                result.data.menuStocks.forEach(ms => stockMap[ms.itemId] = ms.currentStock);
+                let txMenu = db.transaction(["menu"], "readwrite");
+                globalMenuData.forEach(m => {
+                    if (stockMap[m.itemId] !== undefined) {
+                        m.currentStock = Math.max(0, stockMap[m.itemId] - (pendingSoldQty[m.itemId] || 0));
+                        txMenu.objectStore("menu").put(m);
+                    }
+                });
+                if (!document.getElementById("pos-screen").classList.contains("hidden")) renderProductGrid();
+            }
 
+            let serverActive = result.data.activeLaundryOrders || []; 
             let serverUnpaid = result.data.unpaidOrders || []; 
+
             pendingOrders.forEach(po => { 
-                let totalPaid = (Number(po.cashLaundryAmount)||0) + (Number(po.cashHotelAmount)||0) + (Number(po.qrisAmount)||0) + (Number(po.qrisHotelAmount)||0) + (Number(po.transferAmount)||0) + (Number(po.debitAmount)||0);
-                if (Math.round(po.grandTotal) > Math.round(totalPaid) && po.orderStatus !== "Voided" && po.orderStatus !== "Void Pending") { 
-                    if (!serverUnpaid.find(s => s.orderId === po.orderId)) serverUnpaid.unshift(po); 
-                } 
-            });
+                if (String(po.orderId).startsWith("STL-") && po.refOrderId) {
+                    let addPaid = (Number(po.cashLaundryAmount)||0) + (Number(po.cashHotelAmount)||0) + (Number(po.qrisAmount)||0) + (Number(po.qrisHotelAmount)||0) + (Number(po.transferAmount)||0) + (Number(po.debitAmount)||0);
+                    let targetU = serverUnpaid.find(s => s.orderId === po.refOrderId);
+                    if (targetU) targetU.settledAmount = (Number(targetU.settledAmount)||0) + addPaid;
+                    let targetA = serverActive.find(s => s.orderId === po.refOrderId);
+                    if (targetA) {
+                        targetA.settledAmount = (Number(targetA.settledAmount)||0) + addPaid;
+                        if (po.markRefCompleted) targetA.orderStatus = "Completed";
+                    }
+                } else {
+                    if (po.orderStatus === "Processing" || po.orderStatus === "Ready for Pickup") { 
+                        if (!serverActive.find(s => s.orderId === po.orderId)) serverActive.unshift(po); 
+                    } 
+                    let totalPaid = (Number(po.cashLaundryAmount)||0) + (Number(po.cashHotelAmount)||0) + (Number(po.qrisAmount)||0) + (Number(po.qrisHotelAmount)||0) + (Number(po.transferAmount)||0) + (Number(po.debitAmount)||0) + (Number(po.settledAmount)||0);
+                    if (Math.round(po.grandTotal) > Math.round(totalPaid) && po.orderStatus !== "Voided" && po.orderStatus !== "Void Pending") { 
+                        if (!serverUnpaid.find(s => s.orderId === po.orderId)) serverUnpaid.unshift(po); 
+                    }
+                }
+            }); 
+
+            window.activeLaundryTickets = serverActive.filter(s => s.orderStatus === "Processing" || s.orderStatus === "Ready for Pickup");
             window.globalUnpaidOrders = serverUnpaid;
 
             let tc = document.getElementById("ticket-count");  
@@ -2138,7 +2156,7 @@ window.syncMasterData = async function(forceAwait = false) {
                 window.extractUnpaidOrders(); 
             } 
             await window.updatePendingSyncUI();
-        } 
+        }
     } catch (e) { 
         if(nTxt) nTxt.innerText = "Gagal Sinkron"; if(nDot) nDot.style.backgroundColor = "#e74c3c"; 
         console.error("SyncMasterData Error:", e.message); 
@@ -2146,10 +2164,9 @@ window.syncMasterData = async function(forceAwait = false) {
 };
 
 window.extractUnpaidOrders = function() {
-    window.activeUnpaidOrders = window.globalUnpaidOrders.filter(o => {
-        if(o.orderStatus === "Voided" || o.orderStatus === "Void Pending") return false;
-        // Total Paid explicitly ignores discount/free, because discounts lower the grandTotal directly.
-        let totalPaid = (Number(o.cashLaundryAmount)||0) + (Number(o.cashHotelAmount)||0) + (Number(o.qrisAmount)||0) + (Number(o.qrisHotelAmount)||0) + (Number(o.transferAmount)||0) + (Number(o.debitAmount)||0);
+    window.activeUnpaidOrders = (window.globalUnpaidOrders || []).filter(o => {
+        if(String(o.orderId || "").startsWith("STL-") || o.orderStatus === "Voided" || o.orderStatus === "Void Pending") return false;
+        let totalPaid = (Number(o.cashLaundryAmount)||0) + (Number(o.cashHotelAmount)||0) + (Number(o.qrisAmount)||0) + (Number(o.qrisHotelAmount)||0) + (Number(o.transferAmount)||0) + (Number(o.debitAmount)||0) + (Number(o.settledAmount)||0);
         return Math.round(o.grandTotal) > Math.round(totalPaid);
     });
     
@@ -2170,7 +2187,7 @@ window.renderUnpaidOrders = function() {
 
         window.activeUnpaidOrders.forEach((order) => {
             try {
-                let paid = (Number(order.cashLaundryAmount)||0) + (Number(order.cashHotelAmount)||0) + (Number(order.qrisAmount)||0) + (Number(order.qrisHotelAmount)||0) + (Number(order.transferAmount)||0) + (Number(order.debitAmount)||0);
+                let paid = (Number(order.cashLaundryAmount)||0) + (Number(order.cashHotelAmount)||0) + (Number(order.qrisAmount)||0) + (Number(order.qrisHotelAmount)||0) + (Number(order.transferAmount)||0) + (Number(order.debitAmount)||0) + (Number(order.settledAmount)||0);
                 const remaining = (Number(order.grandTotal)||0) - paid;
 
                 let receiptText = order.readableReceipt || "";
@@ -2250,7 +2267,7 @@ window.updatePendingSyncUI = async function() {
     }
 
     if (pending > 0) {
-        let msg = `⚠️ ${pending} Data Belum Masuk Sheet`;
+        let msg = `⚠️ ${pending} Data Belum Masuk (Klik Cek)`;
         if (nTxt) nTxt.innerText = msg;
         if (nDot) nDot.style.backgroundColor = "#f39c12";
         if (loginTxt) loginTxt.innerText = msg;
@@ -2264,7 +2281,42 @@ window.updatePendingSyncUI = async function() {
     return pending;
 };
 
-window.runBackgroundSync = async function() { 
+window.inspectPendingQueue = async function() {
+    if (!db) return;
+    const getItems = (store, checkStatus) => new Promise(res => {
+        try {
+            db.transaction([store], "readonly").objectStore(store).getAll().onsuccess = e => {
+                let list = e.target.result || [];
+                res(checkStatus ? list.filter(x => x.syncStatus === "Pending") : list);
+            };
+        } catch(e) { res([]); }
+    });
+
+    const [orders, expenses, drops, shifts, voids, inbounds, opnames] = await Promise.all([
+        getItems("orders", true), getItems("expenses", true), getItems("cash_drops", false),
+        getItems("shift_reports", false), getItems("void_requests", false),
+        getItems("stock_inbounds", false), getItems("stock_opnames", false)
+    ]);
+
+    let lines = [];
+    orders.forEach(o => lines.push(`• Order: ${o.orderId} (${o.roomNumber}, Rp ${(o.grandTotal||0).toLocaleString('id-ID')})`));
+    expenses.forEach(e => lines.push(`• Expense: ${e.expenseId} (Rp ${(e.amount||0).toLocaleString('id-ID')})`));
+    drops.forEach(d => lines.push(`• Tarik Uang: ${d.dropId} (Rp ${(d.amount||0).toLocaleString('id-ID')})`));
+    shifts.forEach(s => lines.push(`• Shift Report: ${s.shiftId}`));
+    voids.forEach(v => lines.push(`• Void Req: ${v.id} (${v.type})`));
+    inbounds.forEach(i => lines.push(`• Inbound: ${i.inboundId}`));
+    opnames.forEach(o => lines.push(`• Opname: ${o.itemName}`));
+
+    if (lines.length === 0) {
+        return alert("✅ Semua data lokal sudah 100% tersinkronisasi ke Google Sheets!");
+    }
+    if (confirm(`📋 DAFTAR ANTREAN BELUM SINKRON (${lines.length}):\n\n${lines.join("\n")}\n\nKlik OK untuk memaksa kirim ulang sekarang.`)) {
+        await window.runBackgroundSync();
+        await window.updatePendingSyncUI();
+    }
+};
+
+window.runBackgroundSync = async function() {
     if (!navigator.onLine) {
         await window.updatePendingSyncUI();
         return false;
@@ -2614,7 +2666,8 @@ window.openShiftReport = async function() {
     let foodSummary = {};
     
     shiftOrders.forEach(o => {
-        tOrders++; tFree += (o.discounts || 0);
+        if (!String(o.orderId || "").startsWith("STL-")) tOrders++;
+        tFree += (o.discounts || 0);
         cashL += (o.cashLaundryAmount || 0); cashH += (o.cashHotelAmount || 0);
         qrisL += (o.qrisAmount || 0); qrisH += (o.qrisHotelAmount || 0);
         transferH += (o.transferAmount || 0); debitH += (o.debitAmount || 0);
@@ -2680,8 +2733,11 @@ window.openShiftReport = async function() {
     if (document.getElementById("sr-exp-laundry")) document.getElementById("sr-exp-laundry").innerText = "Rp " + (expL + dropL).toLocaleString('id-ID');
     if (document.getElementById("sr-exp-hotel")) document.getElementById("sr-exp-hotel").innerText = "Rp " + (expH + dropH).toLocaleString('id-ID');
 
-    if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = "Rp " + window.masterDrawerBalanceLaundry.toLocaleString('id-ID');
-    if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = "Rp " + window.masterDrawerBalanceHotel.toLocaleString('id-ID');
+    // ✅ P1 FIX: Tampilkan Netto Shift Ini (sesuai struk cetak) + Saldo Kumulatif Laci
+    if (document.getElementById("sr-net-laundry")) document.getElementById("sr-net-laundry").innerText = `Rp ${netL.toLocaleString('id-ID')} (Laci: Rp ${window.masterDrawerBalanceLaundry.toLocaleString('id-ID')})`;
+    if (document.getElementById("sr-net-hotel")) document.getElementById("sr-net-hotel").innerText = `Rp ${netH.toLocaleString('id-ID')} (Laci: Rp ${window.masterDrawerBalanceHotel.toLocaleString('id-ID')})`;
+    if (document.getElementById("sr-actual-cash-hotel")) document.getElementById("sr-actual-cash-hotel").value = "";
+    if (document.getElementById("sr-actual-cash-laundry")) document.getElementById("sr-actual-cash-laundry").value = "";
 
     let foodHtml = "";
     for (const [locName, categories] of Object.entries(foodSummary)) {
@@ -2728,7 +2784,32 @@ window.triggerEndShift = async function(isAutoClose = false) {
     const data = window.currentShiftData; if (!data) return alert("Gagal mengambil data shift kasir.");
     
     if (!isAutoClose) {
-        if (!confirm("Apakah Anda yakin ingin MENGAKHIRI SHIFT?")) return;
+        // ✅ P2 BLIND CASH COUNT (Membaca dari input HTML jika ada, atau prompt otomatis)
+        let inpH = document.getElementById("sr-actual-cash-hotel");
+        let inpL = document.getElementById("sr-actual-cash-laundry");
+        let physH, physL;
+
+        if (inpH && inpL) {
+            if (inpH.value.trim() === "" || inpL.value.trim() === "") {
+                return alert("⚠️ Harap hitung dan masukkan nominal Uang Fisik Hotel & Laundry terlebih dahulu sebelum mengakhiri shift!");
+            }
+            physH = Number(inpH.value) || 0;
+            physL = Number(inpL.value) || 0;
+        } else {
+            let pH = prompt("HITUNG FISIK LACI (Wajib):\nMasukkan jumlah Uang Tunai Fisik LACI HOTEL yang Anda hitung (angka saja):", data.netHotel);
+            if (pH === null || pH.trim() === "" || isNaN(Number(pH))) return alert("⚠️ Perhitungan fisik Laci Hotel wajib diisi angka.");
+            let pL = prompt("HITUNG FISIK LACI (Wajib):\nMasukkan jumlah Uang Tunai Fisik LACI LAUNDRY yang Anda hitung (angka saja):", data.netLaundry);
+            if (pL === null || pL.trim() === "" || isNaN(Number(pL))) return alert("⚠️ Perhitungan fisik Laci Laundry wajib diisi angka.");
+            physH = Number(pH);
+            physL = Number(pL);
+        }
+
+        let diffH = physH - (Number(data.netHotel) || 0);
+        let diffL = physL - (Number(data.netLaundry) || 0);
+        data.cashAuditNotes = `Fisik H: Rp ${physH.toLocaleString('id-ID')} (Selisih: ${diffH >= 0 ? '+' : ''}Rp ${diffH.toLocaleString('id-ID')}) | Fisik L: Rp ${physL.toLocaleString('id-ID')} (Selisih: ${diffL >= 0 ? '+' : ''}Rp ${diffL.toLocaleString('id-ID')})`;
+
+        let confirmMsg = `Konfirmasi Tutup Shift:\n\n• Laci Hotel: Fisik Rp ${physH.toLocaleString('id-ID')} (Selisih: Rp ${diffH.toLocaleString('id-ID')})\n• Laci Laundry: Fisik Rp ${physL.toLocaleString('id-ID')} (Selisih: Rp ${diffL.toLocaleString('id-ID')})\n\nYakin ingin MENGAKHIRI SHIFT?`;
+        if (!confirm(confirmMsg)) return;
 
         // ✅ GATEKEEPER: Pastikan 0 data Pending sebelum shift ditutup!
         let endBtn = document.getElementById("btn-end-shift");
@@ -2744,27 +2825,16 @@ window.triggerEndShift = async function(isAutoClose = false) {
             return alert(
                 `⚠️ SHIFT BELUM BISA DITUTUP!\n\n` +
                 `Masih ada ${unsyncedCount} transaksi/data yang BELUM masuk ke Spreadsheet (koneksi internet terputus atau server sedang sibuk).\n\n` +
-                `Pastikan koneksi internet tablet stabil, lalu klik 'Akhiri Shift' kembali agar tidak ada selisih laporan.`
+                `Klik indikator kuning di pojok atas untuk mengecek antrean, lalu klik 'Akhiri Shift' kembali.`
             );
         }
-        
-        // Patuhi Dropdown Global saat End Shift Manual
-        if (window.currentPrintMode === 'desktop') {
-            window.printShiftStandard(data.shiftId);
-        } else {
-            if (!btCharacteristic) {
-                alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem.");
-            } else {
-                try { await window.buildShiftReportReceipt(data); } 
-                catch (e) { alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan akan direkam ke sistem."); }
-            }
-        }
     } else {
-        // ✅ LEAVE A NOTE FOR AUTO-CLOSE
         data.status = "Auto-Closed (9h Limit)";
         data.cashier = data.cashier + " (Auto)";
+        data.cashAuditNotes = "Auto-Closed (No Manual Count)";
     }
     
+    // ✅ P1 FIX: Simpan & Sync Shift Report DULU sebelum print/reload agar tidak pernah terpotong
     let tx = db.transaction(["local_shift_history", "shift_reports", "active_shifts"], "readwrite");
     tx.objectStore("local_shift_history").add(data); tx.objectStore("shift_reports").add(data);
     tx.objectStore("active_shifts").delete(currentPin);
@@ -2773,9 +2843,24 @@ window.triggerEndShift = async function(isAutoClose = false) {
         let mod = document.getElementById("shift-report-modal");
         if(mod) mod.classList.add("hidden");
         await window.runBackgroundSync(); 
-        
-        if(isAutoClose) alert("Sistem logout otomatis karena shift telah mencapai batas maksimal 9 jam. Laporan shift telah disimpan otomatis ke server.");
-        window.location.reload(); 
+
+        if (isAutoClose) {
+            alert("Sistem logout otomatis karena shift telah mencapai batas maksimal 9 jam. Laporan shift telah disimpan otomatis ke server.");
+            window.location.reload();
+            return;
+        }
+
+        if (window.currentPrintMode === 'desktop') {
+            window.printShiftStandard(data.shiftId, () => window.location.reload());
+        } else {
+            if (!btCharacteristic) {
+                alert("⚠️ Printer belum terhubung! Laporan Penutupan Shift batal dicetak, namun Shift TETAP BERHASIL DITUTUP dan telah direkam ke sistem.");
+            } else {
+                try { await window.buildShiftReportReceipt(data); } 
+                catch (e) { alert("⚠️ Gagal mencetak laporan ke printer (" + e.toString() + "). Namun Shift TETAP BERHASIL DITUTUP dan telah direkam ke sistem."); }
+            }
+            window.location.reload();
+        }
     };
 };
 
@@ -2794,6 +2879,12 @@ window.onload = async () => {
     await initDB(); 
     await window.syncInit();
     window.syncMasterData(); 
+
+    // Klik badge status jaringan untuk melihat antrean Pending (P2)
+    let nTxt = document.getElementById("network-text");
+    if (nTxt) { nTxt.style.cursor = "pointer"; nTxt.onclick = window.inspectPendingQueue; }
+    let lTxt = document.getElementById("login-network-text");
+    if (lTxt) { lTxt.style.cursor = "pointer"; lTxt.onclick = window.inspectPendingQueue; }
     
     // Listeners to detect if the cashier is actually using the tablet
     document.addEventListener("mousemove", resetIdleTimer);
