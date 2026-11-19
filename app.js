@@ -1223,6 +1223,7 @@ window.calculateRemaining = function(manualCash = false) {
             }
         }
     }
+    window.calcCheckoutChange();
 };
 
 window.triggerPayLater = function() {
